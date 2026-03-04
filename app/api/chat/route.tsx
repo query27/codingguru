@@ -1,9 +1,13 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
+import { Mistral } from '@mistralai/mistralai'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY })
+
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const MISTRAL_MODELS = ['codestral-latest']
 
 export async function POST(req: Request) {
   try {
@@ -14,9 +18,10 @@ export async function POST(req: Request) {
       include: { messages: { orderBy: { createdAt: 'asc' } } }
     })
 
-    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    if (!session)
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
-    // 1. If image attached → run through Scout first
+    // --- 1. Image analysis via Scout if attached ---
     let imageContext = ''
     if (imageBase64) {
       const visionResponse = await groq.chat.completions.create({
@@ -27,9 +32,7 @@ export async function POST(req: Request) {
             content: [
               {
                 type: 'image_url',
-                image_url: {
-                  url: `data:${imageMimeType};base64,${imageBase64}`
-                }
+                image_url: { url: `data:${imageMimeType};base64,${imageBase64}` }
               },
               {
                 type: 'text',
@@ -42,7 +45,7 @@ export async function POST(req: Request) {
       imageContext = visionResponse.choices[0].message.content?.slice(0, 800) ?? ''
     }
 
-    // 2. Save user message
+    // --- 2. Save user message ---
     await prisma.message.create({
       data: {
         sessionId,
@@ -52,18 +55,17 @@ export async function POST(req: Request) {
       }
     })
 
-    // 3. Smart memory: summarize old messages, keep recent full
+    // --- 3. Smart memory: summarize older messages ---
     const allMessages = session.messages
     const recentMessages = allMessages.slice(-4)
     const olderMessages = allMessages.slice(0, -4)
-
-    // Compress older messages into a short summary
-    const summary = olderMessages.length > 0
-      ? `[Earlier in this session: ${olderMessages
-          .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
-          .join(' | ')
-          .slice(0, 800)}]`
-      : ''
+    const summary =
+      olderMessages.length > 0
+        ? `[Earlier in this session: ${olderMessages
+            .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
+            .join(' | ')
+            .slice(0, 800)}]`
+        : ''
 
     const history = [
       ...(summary ? [{ role: 'system' as const, content: summary }] : []),
@@ -73,11 +75,8 @@ export async function POST(req: Request) {
       }))
     ]
 
-    // 4. Build messages with system prompt
-    const messages: any[] = [
-      {
-        role: 'system',
-        content: `You are CodingGuru, a senior developer and coding assistant. You are direct, concise, and friendly — like a knowledgeable dev friend, not a consultant.
+    // --- 4. Build system prompt ---
+    const systemPrompt = `You are CodingGuru, a senior developer and coding assistant. You are direct, concise, and friendly — like a knowledgeable dev friend, not a consultant.
 
 Session: "${session.name}".
 
@@ -88,29 +87,45 @@ Rules:
 - Write code immediately when the intent is clear
 - Be conversational, not formal
 - You have full memory of this session only${
-          imageContext
-            ? `\n\n[VISION CONTEXT from image analysis]\n${imageContext}\n[END VISION CONTEXT]\nUse this context to answer the user's question about the image.`
-            : ''
-        }`
-      },
+      imageContext
+        ? `\n\n[VISION CONTEXT from image analysis]\n${imageContext}\n[END VISION CONTEXT]\nUse this context to answer the user's question about the image.`
+        : ''
+    }`
+
+    // --- 5. Build messages ---
+    const messages = [
       ...history,
-      {
-        role: 'user',
-        content: imageBase64
-          ? `📎 [Image attached]\n${content}`
-          : content
-      }
+      { role: 'user', content: imageBase64 ? `📎 [Image attached]\n${content}` : content }
     ]
 
-    // 5. Call base model
-    const completion = await groq.chat.completions.create({
-      model: session.model,
-      messages
-    })
+    // --- 6. Call AI model ---
+    let assistantMessage = ''
 
-    const assistantMessage = completion.choices[0].message.content ?? ''
+    if (MISTRAL_MODELS.includes(session.model)) {
+      // --- Mistral call ---
+      const mistralInputs = messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
-    // 6. Save assistant response
+      const response = await mistral.beta.conversations.start({
+        model: session.model,
+        inputs: mistralInputs,
+        instructions: systemPrompt,
+        temperature: 0.7,
+        maxTokens: 1024
+      })
+
+      assistantMessage = response.outputs?.[0]?.content ?? ''
+    } else {
+      // --- Groq call ---
+      const completion = await groq.chat.completions.create({
+        model: session.model,
+        messages: [{ role: 'system', content: systemPrompt }, ...messages]
+      })
+      assistantMessage = completion.choices[0].message.content ?? ''
+    }
+
+    // --- 7. Save assistant response ---
     const saved = await prisma.message.create({
       data: {
         sessionId,
@@ -120,7 +135,7 @@ Rules:
       }
     })
 
-    // 7. Save Scout's analysis as context if image was used
+    // --- 8. Save vision context separately if image used ---
     if (imageContext) {
       await prisma.message.create({
         data: {
@@ -139,10 +154,12 @@ Rules:
       visionUsed: !!imageBase64,
       visionAnalysis: imageContext || null
     })
-
   } catch (err: any) {
     console.error('Chat error:', err)
-    return NextResponse.json({ error: err?.message ?? 'Something went wrong' }, { status: 500 })
+    return NextResponse.json(
+      { error: err?.message ?? 'Something went wrong' },
+      { status: 500 }
+    )
   }
 }
 

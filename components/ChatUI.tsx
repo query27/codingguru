@@ -8,6 +8,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 const MODELS = [
   { id: "openai/gpt-oss-120b", label: "GPT OSS 120B", color: "#00ff9d" },
   { id: "openai/gpt-oss-20b", label: "GPT OSS 20B", color: "#00d4ff" },
+  { id: "mistral-large-2512", label: "Mistral Large", color: "#ff7043" },
   { id: "groq/compound", label: "Compound", color: "#ff6b35" },
   { id: "groq/compound-mini", label: "Compound Mini", color: "#ff6b35" },
   { id: "moonshotai/kimi-k2-instruct", label: "Kimi K2", color: "#a78bfa" },
