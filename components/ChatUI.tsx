@@ -21,6 +21,7 @@ type Message = {
   content: string;
   model: string;
   createdAt: string;
+  imagePreview?: string;
 };
 
 type Session = {
@@ -85,8 +86,23 @@ function Message({ msg }: { msg: Message }) {
           color: "#cbd5e1", fontSize: "13.5px", lineHeight: "1.65",
           fontFamily: "'Inter', sans-serif", wordBreak: "break-word",
         }}>
+          {/* Image preview in message */}
+          {isUser && msg.imagePreview && (
+            <img
+              src={msg.imagePreview}
+              alt="attached"
+              style={{
+                maxWidth: "200px", maxHeight: "200px",
+                borderRadius: "8px", marginBottom: "6px",
+                display: "block", border: "1px solid #ffffff14"
+              }}
+            />
+          )}
+
           {isUser ? (
-            <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
+            <span style={{ whiteSpace: "pre-wrap" }}>
+              {msg.content.replace("📎 [Image attached]\n", "")}
+            </span>
           ) : (
             <ReactMarkdown
               components={{
@@ -192,8 +208,14 @@ export default function CodingGuru() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Image states
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageMime, setSelectedImageMime] = useState<string>("image/png");
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const activeMessages = activeSession?.messages ?? [];
@@ -208,7 +230,39 @@ export default function CodingGuru() {
   useEffect(() => {
     if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
   }, [activeSessionId]);
-
+  
+  // Paste Image shortcut
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!activeSession) return
+      const items = e.clipboardData?.items
+      if (!items) return
+  
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (!file) return
+  
+          setSelectedImageMime(file.type)
+  
+          const preview = URL.createObjectURL(file)
+          setSelectedImagePreview(preview)
+  
+          const reader = new FileReader()
+          reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1]
+            setSelectedImage(base64)
+          }
+          reader.readAsDataURL(file)
+          break
+        }
+      }
+    }
+  
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [activeSession])
+  
   async function fetchSessions() {
     try {
       setLoading(true);
@@ -259,11 +313,29 @@ export default function CodingGuru() {
     }
   }
 
-  async function handleSend() {
-    const content = inputRef.current?.value.trim();
-    if (!content || !activeSessionId || isTyping) return;
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    // Clear via ref — zero re-render
+    setSelectedImageMime(file.type);
+
+    const preview = URL.createObjectURL(file);
+    setSelectedImagePreview(preview);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      setSelectedImage(base64);
+    };
+    reader.readAsDataURL(file);
+
+    e.target.value = "";
+  }
+
+  async function handleSend() {
+    const content = inputRef.current?.value.trim() ?? "";
+    if (!content && !selectedImage || !activeSessionId || isTyping) return;
+
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
@@ -272,10 +344,20 @@ export default function CodingGuru() {
     setIsTyping(true);
     setError(null);
 
+    const imageToSend = selectedImage;
+    const mimeToSend = selectedImageMime;
+    const previewToSend = selectedImagePreview;
+    setSelectedImage(null);
+    setSelectedImagePreview(null);
+
     const tempId = `temp-${Date.now()}`;
     const userMsg: Message = {
-      id: tempId, role: "user", content,
-      model: activeSession!.model, createdAt: new Date().toISOString()
+      id: tempId,
+      role: "user",
+      content: imageToSend ? `📎 [Image attached]\n${content}` : content,
+      model: activeSession!.model,
+      createdAt: new Date().toISOString(),
+      imagePreview: previewToSend ?? undefined,
     };
 
     setSessions(prev => prev.map(s =>
@@ -286,15 +368,25 @@ export default function CodingGuru() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId, content })
+        body: JSON.stringify({
+          sessionId: activeSessionId,
+          content: content || "What do you see in this image?",
+          imageBase64: imageToSend,
+          imageMimeType: mimeToSend,
+        })
       });
+
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
       const data = await res.json();
+
       const assistantMsg: Message = {
-        id: data.messageId, role: "assistant",
-        content: data.message, model: data.model,
-        createdAt: new Date().toISOString()
+        id: data.messageId,
+        role: "assistant",
+        content: data.message,
+        model: data.model,
+        createdAt: new Date().toISOString(),
       };
+
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
       ));
@@ -348,6 +440,7 @@ export default function CodingGuru() {
         .cg-model-opt:hover { background: #ffffff08 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
         .cg-new:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
+        .cg-attach:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-thumb { background: #ffffff12; border-radius: 2px; }
       `}</style>
@@ -363,6 +456,7 @@ export default function CodingGuru() {
           background: "#0b1120", borderRight: "1px solid #ffffff0a",
           display: "flex", flexDirection: "column",
         }}>
+          {/* Logo */}
           <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{
               width: "30px", height: "30px", borderRadius: "8px",
@@ -376,6 +470,7 @@ export default function CodingGuru() {
             </div>
           </div>
 
+          {/* New session */}
           <div style={{ padding: "12px 10px 6px" }}>
             {showNewSession ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -410,6 +505,7 @@ export default function CodingGuru() {
             )}
           </div>
 
+          {/* Sessions list */}
           <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
             {loading ? (
               <div style={{ padding: "20px", textAlign: "center", color: "#334155", fontSize: "12px" }}>Loading...</div>
@@ -434,6 +530,7 @@ export default function CodingGuru() {
             })}
           </div>
 
+          {/* Footer */}
           <div style={{ padding: "10px 14px", borderTop: "1px solid #ffffff0a", display: "flex", alignItems: "center", gap: "6px" }}>
             <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: "cgPulse 2s infinite", boxShadow: "0 0 5px #00ff9d", flexShrink: 0 }} />
             <span style={{ fontSize: "9px", color: "#1e3a2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>GROQCLOUD CONNECTED</span>
@@ -443,16 +540,20 @@ export default function CodingGuru() {
         {/* MAIN AREA */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", minWidth: 0 }}>
 
+          {/* Header */}
           <div style={{ padding: "12px 18px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#080c14" }}>
             {activeSession ? (
               <div>
                 <div style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0" }}>{activeSession.name}</div>
-                <div style={{ fontSize: "10px", color: "#334155", fontFamily: "'JetBrains Mono', monospace" }}>{activeMessages.length} messages</div>
+                <div style={{ fontSize: "10px", color: "#334155", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {activeMessages.length} messages · 👁 vision via Llama-4-Scout
+                </div>
               </div>
             ) : (
               <div style={{ fontSize: "14px", color: "#334155" }}>Select a session</div>
             )}
 
+            {/* Model switcher */}
             {activeSession && (
               <div style={{ position: "relative" }}>
                 <button onClick={() => setShowModelPicker(p => !p)} style={{
@@ -482,6 +583,7 @@ export default function CodingGuru() {
             )}
           </div>
 
+          {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
             onClick={() => showModelPicker && setShowModelPicker(false)}>
             {!activeSession ? (
@@ -493,7 +595,7 @@ export default function CodingGuru() {
                 <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#00ff9d0a", border: "1px solid #00ff9d18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚡</div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "14px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>Start chatting</div>
-                  <div style={{ fontSize: "12px", color: "#1e293b" }}>{activeModel?.label} is ready</div>
+                  <div style={{ fontSize: "12px", color: "#1e293b" }}>{activeModel?.label} is ready · attach images via 📎</div>
                 </div>
               </div>
             ) : (
@@ -509,6 +611,7 @@ export default function CodingGuru() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Error */}
           {error && (
             <div style={{ margin: "0 16px 8px", padding: "8px 12px", background: "#ff000010", border: "1px solid #ff000030", borderRadius: "8px", color: "#ef4444", fontSize: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               {error}
@@ -516,8 +619,58 @@ export default function CodingGuru() {
             </div>
           )}
 
+          {/* Input area */}
           <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#080c14", borderTop: "1px solid #ffffff0a" }}>
+
+            {/* Image preview above input */}
+            {selectedImagePreview && (
+              <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
+                <img src={selectedImagePreview} alt="preview" style={{
+                  height: "60px", borderRadius: "8px",
+                  border: "1px solid #00ff9d44", display: "block"
+                }} />
+                <button onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }} style={{
+                  position: "absolute", top: "-6px", right: "-6px",
+                  width: "18px", height: "18px", borderRadius: "50%",
+                  background: "#ef4444", border: "none", color: "white",
+                  fontSize: "10px", cursor: "pointer", display: "flex",
+                  alignItems: "center", justifyContent: "center"
+                }}>✕</button>
+                <div style={{
+                  marginTop: "4px", fontSize: "9px", color: "#00ff9d",
+                  fontFamily: "'JetBrains Mono', monospace"
+                }}>👁 will use Llama-4-Scout</div>
+              </div>
+            )}
+
             <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#0f1829", border: "1px solid #ffffff0e", borderRadius: "12px", padding: "8px 8px 8px 14px" }}>
+
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                style={{ display: "none" }}
+              />
+
+              {/* Attach button */}
+              <button
+                className="cg-attach"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!activeSession}
+                style={{
+                  width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0,
+                  background: selectedImage ? "#00ff9d18" : "transparent",
+                  border: `1px solid ${selectedImage ? "#00ff9d44" : "#ffffff12"}`,
+                  color: selectedImage ? "#00ff9d" : "#334155",
+                  cursor: activeSession ? "pointer" : "default",
+                  fontSize: "14px", display: "flex", alignItems: "center",
+                  justifyContent: "center", transition: "all 0.15s ease",
+                  marginBottom: "2px"
+                }}
+              >📎</button>
+
               <textarea
                 ref={inputRef}
                 disabled={!activeSession}
@@ -529,7 +682,7 @@ export default function CodingGuru() {
                   e.target.style.height = "auto";
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
-                placeholder={activeSession ? "Ask anything..." : "Select a session first"}
+                placeholder={activeSession ? "Ask anything... or attach an image 📎" : "Select a session first"}
                 rows={1}
                 style={{
                   flex: 1, background: "transparent", border: "none", color: "#e2e8f0",
@@ -538,20 +691,23 @@ export default function CodingGuru() {
                   outline: "none", overflowY: "auto"
                 }}
               />
+
               <button className="cg-send" onClick={handleSend}
-                disabled={!inputHasText || isTyping || !activeSession}
+                disabled={(!inputHasText && !selectedImage) || isTyping || !activeSession}
                 style={{
                   width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0,
-                  background: inputHasText && !isTyping && activeSession ? "#00ff9d" : "#ffffff08",
-                  border: "none", cursor: inputHasText && !isTyping && activeSession ? "pointer" : "default",
-                  color: inputHasText && !isTyping ? "#080c14" : "#334155",
+                  background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#ffffff08",
+                  border: "none",
+                  cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default",
+                  color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#334155",
                   fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center",
                   transition: "all 0.15s ease",
-                  boxShadow: inputHasText && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none"
+                  boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none"
                 }}>↑</button>
             </div>
+
             <div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#0f1c2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
-              ENTER to send · SHIFT+ENTER new line · switch models without losing memory
+              ENTER to send · SHIFT+ENTER new line · 📎 image → Llama-4-Scout → {activeModel?.label ?? "base model"}
             </div>
           </div>
         </div>

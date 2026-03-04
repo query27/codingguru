@@ -2,58 +2,93 @@ import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-})
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 
 export async function POST(req: Request) {
   try {
-    const { sessionId, content } = await req.json()
+    const { sessionId, content, imageBase64, imageMimeType } = await req.json()
 
-    // 1. Load session + full history
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: {
-        messages: { orderBy: { createdAt: 'asc' } }
-      }
+      include: { messages: { orderBy: { createdAt: 'asc' } } }
     })
 
-    if (!session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+
+    // 1. If image attached → run through Scout first
+    let imageContext = ''
+    if (imageBase64) {
+      const visionResponse = await groq.chat.completions.create({
+        model: VISION_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${imageMimeType};base64,${imageBase64}`
+                }
+              },
+              {
+                type: 'text',
+                text: `Analyze this image in detail. Focus on: code, errors, UI, architecture diagrams, or anything technically relevant. Be thorough — your analysis will be used by another AI model to help the user. User's message: "${content}"`
+              }
+            ]
+          }
+        ]
+      })
+      imageContext = visionResponse.choices[0].message.content ?? ''
     }
 
-    // 2. Save user message
+    // 2. Save user message (with image flag)
     await prisma.message.create({
       data: {
         sessionId,
         role: 'user',
-        content,
+        content: imageBase64
+          ? `📎 [Image attached]\n${content}`
+          : content,
         model: session.model
       }
     })
 
-    // 3. Build full history for model
+    // 3. Build history
     const history = session.messages.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content
     }))
 
-    // 4. Call Groq with full session history
+    // 4. Build messages array — inject Scout's vision as system context
+    const messages: any[] = [
+      {
+        role: 'system',
+        content: `You are CodingGuru, an expert coding assistant. Session: "${session.name}". You have full memory of this session only.${
+          imageContext
+            ? `\n\n[VISION CONTEXT from image analysis]\n${imageContext}\n[END VISION CONTEXT]\nUse this context to answer the user's question about the image.`
+            : ''
+        }`
+      },
+      ...history,
+      {
+        role: 'user',
+        content: imageBase64
+          ? `📎 [Image attached]\n${content}`
+          : content
+      }
+    ]
+
+    // 5. Call base model with vision context injected
     const completion = await groq.chat.completions.create({
       model: session.model,
-      messages: [
-        {
-          role: 'system',
-          content: `You are CodingGuru, an expert coding assistant. Current session: "${session.name}". You have full memory of this session only.`
-        },
-        ...history,
-        { role: 'user', content }
-      ]
+      messages
     })
 
     const assistantMessage = completion.choices[0].message.content ?? ''
 
-    // 5. Save assistant response
+    // 6. Save assistant response
     const saved = await prisma.message.create({
       data: {
         sessionId,
@@ -63,29 +98,37 @@ export async function POST(req: Request) {
       }
     })
 
+    // 7. If image was used, also save Scout's analysis as hidden context
+    if (imageContext) {
+      await prisma.message.create({
+        data: {
+          sessionId,
+          role: 'assistant',
+          content: `🔍 [Vision Analysis by Llama-4-Scout]\n${imageContext}`,
+          model: VISION_MODEL
+        }
+      })
+    }
+
     return NextResponse.json({
       message: assistantMessage,
       model: session.model,
-      messageId: saved.id
+      messageId: saved.id,
+      visionUsed: !!imageBase64,
+      visionAnalysis: imageContext || null
     })
 
   } catch (err: any) {
     console.error('Chat error:', err)
-    return NextResponse.json(
-      { error: err?.message ?? 'Something went wrong' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: err?.message ?? 'Something went wrong' }, { status: 500 })
   }
 }
 
-// PATCH - switch model mid chat (memory stays intact)
 export async function PATCH(req: Request) {
   const { sessionId, model } = await req.json()
-
   const session = await prisma.session.update({
     where: { id: sessionId },
     data: { model }
   })
-
   return NextResponse.json(session)
 }
