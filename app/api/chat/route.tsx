@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 
 export async function POST(req: Request) {
@@ -43,14 +42,12 @@ export async function POST(req: Request) {
       imageContext = visionResponse.choices[0].message.content ?? ''
     }
 
-    // 2. Save user message (with image flag)
+    // 2. Save user message
     await prisma.message.create({
       data: {
         sessionId,
         role: 'user',
-        content: imageBase64
-          ? `📎 [Image attached]\n${content}`
-          : content,
+        content: imageBase64 ? `📎 [Image attached]\n${content}` : content,
         model: session.model
       }
     })
@@ -61,11 +58,21 @@ export async function POST(req: Request) {
       content: m.content
     }))
 
-    // 4. Build messages array — inject Scout's vision as system context
+    // 4. Build messages with updated system prompt
     const messages: any[] = [
       {
         role: 'system',
-        content: `You are CodingGuru, an expert coding assistant. Session: "${session.name}". You have full memory of this session only.${
+        content: `You are CodingGuru, a senior developer and coding assistant. You are direct, concise, and friendly — like a knowledgeable dev friend, not a consultant.
+
+Session: "${session.name}".
+
+Rules:
+- Never use excessive formatting, tables, or long intros unless specifically asked
+- Get straight to the point
+- Ask ONE clarifying question if needed, not a questionnaire
+- Write code immediately when the intent is clear
+- Be conversational, not formal
+- You have full memory of this session only${
           imageContext
             ? `\n\n[VISION CONTEXT from image analysis]\n${imageContext}\n[END VISION CONTEXT]\nUse this context to answer the user's question about the image.`
             : ''
@@ -74,13 +81,11 @@ export async function POST(req: Request) {
       ...history,
       {
         role: 'user',
-        content: imageBase64
-          ? `📎 [Image attached]\n${content}`
-          : content
+        content: imageBase64 ? `📎 [Image attached]\n${content}` : content
       }
     ]
 
-    // 5. Call base model with vision context injected
+    // 5. Call base model
     const completion = await groq.chat.completions.create({
       model: session.model,
       messages
@@ -98,7 +103,7 @@ export async function POST(req: Request) {
       }
     })
 
-    // 7. If image was used, also save Scout's analysis as hidden context
+    // 7. If image was used, save Scout's analysis as context
     if (imageContext) {
       await prisma.message.create({
         data: {
