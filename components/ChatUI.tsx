@@ -86,19 +86,12 @@ function Message({ msg }: { msg: Message }) {
           color: "#cbd5e1", fontSize: "13.5px", lineHeight: "1.65",
           fontFamily: "'Inter', sans-serif", wordBreak: "break-word",
         }}>
-          {/* Image preview in message */}
           {isUser && msg.imagePreview && (
-            <img
-              src={msg.imagePreview}
-              alt="attached"
-              style={{
-                maxWidth: "200px", maxHeight: "200px",
-                borderRadius: "8px", marginBottom: "6px",
-                display: "block", border: "1px solid #ffffff14"
-              }}
-            />
+            <img src={msg.imagePreview} alt="attached" style={{
+              maxWidth: "200px", maxHeight: "200px", borderRadius: "8px",
+              marginBottom: "6px", display: "block", border: "1px solid #ffffff14"
+            }} />
           )}
-
           {isUser ? (
             <span style={{ whiteSpace: "pre-wrap" }}>
               {msg.content.replace("📎 [Image attached]\n", "")}
@@ -116,27 +109,18 @@ function Message({ msg }: { msg: Message }) {
                         padding: "6px 12px", background: "#0d1117",
                         borderRadius: "8px 8px 0 0", border: "1px solid #ffffff0e", borderBottom: "none",
                       }}>
-                        <span style={{ fontSize: "11px", color: "#475569", fontFamily: "'JetBrains Mono', monospace" }}>
-                          {match[1]}
-                        </span>
+                        <span style={{ fontSize: "11px", color: "#475569", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
                         <CopyButton code={codeString} />
                       </div>
-                      <SyntaxHighlighter
-                        style={vscDarkPlus} language={match[1]} PreTag="div"
-                        customStyle={{
-                          borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0",
-                          border: "1px solid #ffffff0e", borderTop: "none", background: "#0a0f1a",
-                        }}
+                      <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div"
+                        customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #ffffff0e", borderTop: "none", background: "#0a0f1a" }}
                         {...props}
                       >
                         {codeString}
                       </SyntaxHighlighter>
                     </div>
                   ) : (
-                    <code style={{
-                      background: "#ffffff10", padding: "2px 6px", borderRadius: "4px",
-                      fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d"
-                    }} {...props}>{children}</code>
+                    <code style={{ background: "#ffffff10", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d" }} {...props}>{children}</code>
                   );
                 },
                 p: ({ children }: any) => <p style={{ margin: "4px 0", lineHeight: "1.65" }}>{children}</p>,
@@ -148,10 +132,7 @@ function Message({ msg }: { msg: Message }) {
                 h3: ({ children }: any) => <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", margin: "8px 0 4px" }}>{children}</h3>,
                 strong: ({ children }: any) => <strong style={{ color: "#f1f5f9", fontWeight: 600 }}>{children}</strong>,
                 blockquote: ({ children }: any) => (
-                  <blockquote style={{
-                    borderLeft: "3px solid #00ff9d44", paddingLeft: "12px",
-                    margin: "8px 0", color: "#64748b", fontStyle: "italic"
-                  }}>{children}</blockquote>
+                  <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>
                 ),
                 table: ({ children }: any) => (
                   <div style={{ overflowX: "auto", margin: "8px 0" }}>
@@ -179,18 +160,10 @@ function Message({ msg }: { msg: Message }) {
 function TypingDots() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 16px" }}>
-      <div style={{
-        width: "28px", height: "28px", borderRadius: "8px",
-        background: "#ffffff08", border: "1px solid #ffffff0e",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "12px", flexShrink: 0
-      }}>⚡</div>
+      <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#ffffff08", border: "1px solid #ffffff0e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>⚡</div>
       <div style={{ display: "flex", gap: "3px" }}>
         {[0, 1, 2].map(i => (
-          <div key={i} style={{
-            width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d",
-            animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }} />
+          <div key={i} style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
         ))}
       </div>
     </div>
@@ -202,13 +175,9 @@ export default function CodingGuru() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [inputHasText, setInputHasText] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [newSessionName, setNewSessionName] = useState("");
-  const [showNewSession, setShowNewSession] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Image states
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageMime, setSelectedImageMime] = useState<string>("image/png");
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
@@ -230,39 +199,34 @@ export default function CodingGuru() {
   useEffect(() => {
     if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
   }, [activeSessionId]);
-  
-  // Paste Image shortcut
+
+  // Ctrl+V paste image
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      if (!activeSession) return
-      const items = e.clipboardData?.items
-      if (!items) return
-  
+      if (!activeSession) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
       for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (!file) return
-  
-          setSelectedImageMime(file.type)
-  
-          const preview = URL.createObjectURL(file)
-          setSelectedImagePreview(preview)
-  
-          const reader = new FileReader()
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (!file) return;
+          setSelectedImageMime(file.type);
+          const preview = URL.createObjectURL(file);
+          setSelectedImagePreview(preview);
+          const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1]
-            setSelectedImage(base64)
-          }
-          reader.readAsDataURL(file)
-          break
+            const base64 = (reader.result as string).split(",")[1];
+            setSelectedImage(base64);
+          };
+          reader.readAsDataURL(file);
+          break;
         }
       }
-    }
-  
-    window.addEventListener('paste', handlePaste)
-    return () => window.removeEventListener('paste', handlePaste)
-  }, [activeSession])
-  
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [activeSession]);
+
   async function fetchSessions() {
     try {
       setLoading(true);
@@ -278,18 +242,15 @@ export default function CodingGuru() {
   }
 
   async function handleCreateSession() {
-    if (!newSessionName.trim()) return;
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newSessionName.trim(), model: "openai/gpt-oss-120b" })
+        body: JSON.stringify({ name: "New Chat", model: "openai/gpt-oss-120b" })
       });
       const session = await res.json();
       setSessions(prev => [{ ...session, messages: [] }, ...prev]);
       setActiveSessionId(session.id);
-      setNewSessionName("");
-      setShowNewSession(false);
     } catch {
       setError("Failed to create session");
     }
@@ -316,20 +277,40 @@ export default function CodingGuru() {
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setSelectedImageMime(file.type);
-
     const preview = URL.createObjectURL(file);
     setSelectedImagePreview(preview);
-
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(",")[1];
       setSelectedImage(base64);
     };
     reader.readAsDataURL(file);
-
     e.target.value = "";
+  }
+
+  // Auto name session after first message
+  async function autoNameSession(sessionId: string, firstMessage: string) {
+    try {
+      const res = await fetch("/api/sessions/autonaming", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: firstMessage })
+      });
+      const { name } = await res.json();
+
+      await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, name })
+      });
+
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId ? { ...s, name } : s
+      ));
+    } catch {
+      // Silently fail — not critical
+    }
   }
 
   async function handleSend() {
@@ -349,6 +330,11 @@ export default function CodingGuru() {
     const previewToSend = selectedImagePreview;
     setSelectedImage(null);
     setSelectedImagePreview(null);
+
+    // Auto name if first message
+    if (activeMessages.length === 0) {
+      autoNameSession(activeSessionId, content || "Image attached");
+    }
 
     const tempId = `temp-${Date.now()}`;
     const userMsg: Message = {
@@ -434,6 +420,10 @@ export default function CodingGuru() {
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes cgSlide {
+          from { opacity: 0; transform: translateX(-4px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover { background: #ffffff07 !important; }
         .cg-session.active { background: #00ff9d08 !important; border-color: #00ff9d22 !important; }
@@ -445,25 +435,14 @@ export default function CodingGuru() {
         ::-webkit-scrollbar-thumb { background: #ffffff12; border-radius: 2px; }
       `}</style>
 
-      <div style={{
-        display: "flex", height: "100vh", width: "100%",
-        background: "#080c14", fontFamily: "'Inter', sans-serif", overflow: "hidden"
-      }}>
+      <div style={{ display: "flex", height: "100vh", width: "100%", background: "#080c14", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
 
         {/* SIDEBAR */}
-        <div style={{
-          width: "240px", minWidth: "240px", height: "100vh",
-          background: "#0b1120", borderRight: "1px solid #ffffff0a",
-          display: "flex", flexDirection: "column",
-        }}>
+        <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#0b1120", borderRight: "1px solid #ffffff0a", display: "flex", flexDirection: "column" }}>
+
           {/* Logo */}
           <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{
-              width: "30px", height: "30px", borderRadius: "8px",
-              background: "linear-gradient(135deg, #00ff9d, #00c4f0)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "15px", boxShadow: "0 0 16px #00ff9d33", flexShrink: 0
-            }}>⚡</div>
+            <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #00ff9d, #00c4f0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", boxShadow: "0 0 16px #00ff9d33", flexShrink: 0 }}>⚡</div>
             <div>
               <div style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", letterSpacing: "-0.2px" }}>CodingGuru</div>
               <div style={{ fontSize: "9px", color: "#00ff9d", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px", opacity: 0.8 }}>AI ASSISTANT</div>
@@ -471,38 +450,17 @@ export default function CodingGuru() {
           </div>
 
           {/* New session */}
+          {/* New session */}
           <div style={{ padding: "12px 10px 6px" }}>
-            {showNewSession ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <input
-                  autoFocus value={newSessionName}
-                  onChange={e => setNewSessionName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") handleCreateSession();
-                    if (e.key === "Escape") { setShowNewSession(false); setNewSessionName(""); }
-                  }}
-                  placeholder="Session name..."
-                  style={{
-                    background: "#ffffff08", border: "1px solid #00ff9d33", borderRadius: "8px",
-                    padding: "7px 10px", color: "#e2e8f0", fontSize: "12px", outline: "none",
-                    width: "100%", fontFamily: "'Inter', sans-serif"
-                  }}
-                />
-                <div style={{ display: "flex", gap: "5px" }}>
-                  <button onClick={handleCreateSession} style={{ flex: 1, padding: "6px", borderRadius: "7px", background: "#00ff9d", border: "none", color: "#080c14", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>Create</button>
-                  <button onClick={() => { setShowNewSession(false); setNewSessionName(""); }} style={{ flex: 1, padding: "6px", borderRadius: "7px", background: "#ffffff08", border: "1px solid #ffffff0e", color: "#64748b", fontSize: "11px", cursor: "pointer" }}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <button className="cg-new" onClick={() => setShowNewSession(true)} style={{
-                width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #ffffff18",
-                background: "transparent", color: "#475569", fontSize: "12px", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif"
-              }}>
-                <span>+</span> New Session
-              </button>
-            )}
+            <button className="cg-new" onClick={handleCreateSession} style={{
+              width: "100%", padding: "8px", borderRadius: "8px",
+              border: "1px dashed #ffffff18", background: "transparent",
+              color: "#475569", fontSize: "12px", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+              transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif"
+            }}>
+              <span>+</span> New Chat
+            </button>
           </div>
 
           {/* Sessions list */}
@@ -520,7 +478,7 @@ export default function CodingGuru() {
                   style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "140px" }}>{session.name}</span>
+                    <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "140px", animation: "cgSlide 0.3s ease" }}>{session.name}</span>
                     <button className="cg-del" onClick={(e) => handleDeleteSession(session.id, e)}
                       style={{ opacity: 0, background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "12px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>✕</button>
                   </div>
@@ -553,14 +511,9 @@ export default function CodingGuru() {
               <div style={{ fontSize: "14px", color: "#334155" }}>Select a session</div>
             )}
 
-            {/* Model switcher */}
             {activeSession && (
               <div style={{ position: "relative" }}>
-                <button onClick={() => setShowModelPicker(p => !p)} style={{
-                  display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px",
-                  background: "#ffffff07", border: "1px solid #ffffff0e", color: activeModel?.color ?? "#64748b",
-                  cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease",
-                }}>
+                <button onClick={() => setShowModelPicker(p => !p)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#ffffff07", border: "1px solid #ffffff0e", color: activeModel?.color ?? "#64748b", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: activeModel?.color ?? "#64748b", flexShrink: 0, boxShadow: `0 0 6px ${activeModel?.color ?? "#64748b"}` }} />
                   {activeModel?.label ?? "Select Model"}
                   <span style={{ opacity: 0.5, fontSize: "9px" }}>▼</span>
@@ -595,7 +548,7 @@ export default function CodingGuru() {
                 <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#00ff9d0a", border: "1px solid #00ff9d18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚡</div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "14px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>Start chatting</div>
-                  <div style={{ fontSize: "12px", color: "#1e293b" }}>{activeModel?.label} is ready · attach images via 📎</div>
+                  <div style={{ fontSize: "12px", color: "#1e293b" }}>{activeModel?.label} is ready · attach images via 📎 or Ctrl+V</div>
                 </div>
               </div>
             ) : (
@@ -619,57 +572,25 @@ export default function CodingGuru() {
             </div>
           )}
 
-          {/* Input area */}
+          {/* Input */}
           <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#080c14", borderTop: "1px solid #ffffff0a" }}>
 
-            {/* Image preview above input */}
+            {/* Image preview */}
             {selectedImagePreview && (
               <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
-                <img src={selectedImagePreview} alt="preview" style={{
-                  height: "60px", borderRadius: "8px",
-                  border: "1px solid #00ff9d44", display: "block"
-                }} />
-                <button onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }} style={{
-                  position: "absolute", top: "-6px", right: "-6px",
-                  width: "18px", height: "18px", borderRadius: "50%",
-                  background: "#ef4444", border: "none", color: "white",
-                  fontSize: "10px", cursor: "pointer", display: "flex",
-                  alignItems: "center", justifyContent: "center"
-                }}>✕</button>
-                <div style={{
-                  marginTop: "4px", fontSize: "9px", color: "#00ff9d",
-                  fontFamily: "'JetBrains Mono', monospace"
-                }}>👁 will use Llama-4-Scout</div>
+                <img src={selectedImagePreview} alt="preview" style={{ height: "60px", borderRadius: "8px", border: "1px solid #00ff9d44", display: "block" }} />
+                <button onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }} style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", borderRadius: "50%", background: "#ef4444", border: "none", color: "white", fontSize: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                <div style={{ marginTop: "4px", fontSize: "9px", color: "#00ff9d", fontFamily: "'JetBrains Mono', monospace" }}>👁 will use Llama-4-Scout</div>
               </div>
             )}
 
             <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#0f1829", border: "1px solid #ffffff0e", borderRadius: "12px", padding: "8px 8px 8px 14px" }}>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
 
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
-                style={{ display: "none" }}
-              />
-
-              {/* Attach button */}
-              <button
-                className="cg-attach"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!activeSession}
-                style={{
-                  width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0,
-                  background: selectedImage ? "#00ff9d18" : "transparent",
-                  border: `1px solid ${selectedImage ? "#00ff9d44" : "#ffffff12"}`,
-                  color: selectedImage ? "#00ff9d" : "#334155",
-                  cursor: activeSession ? "pointer" : "default",
-                  fontSize: "14px", display: "flex", alignItems: "center",
-                  justifyContent: "center", transition: "all 0.15s ease",
-                  marginBottom: "2px"
-                }}
-              >📎</button>
+              <button className="cg-attach" onClick={() => fileInputRef.current?.click()} disabled={!activeSession}
+                style={{ width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0, background: selectedImage ? "#00ff9d18" : "transparent", border: `1px solid ${selectedImage ? "#00ff9d44" : "#ffffff12"}`, color: selectedImage ? "#00ff9d" : "#334155", cursor: activeSession ? "pointer" : "default", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", marginBottom: "2px" }}>
+                📎
+              </button>
 
               <textarea
                 ref={inputRef}
@@ -682,32 +603,18 @@ export default function CodingGuru() {
                   e.target.style.height = "auto";
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
-                placeholder={activeSession ? "Ask anything... or attach an image 📎" : "Select a session first"}
+                placeholder={activeSession ? "Ask anything... or paste image with Ctrl+V" : "Select a session first"}
                 rows={1}
-                style={{
-                  flex: 1, background: "transparent", border: "none", color: "#e2e8f0",
-                  fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif",
-                  lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d",
-                  outline: "none", overflowY: "auto"
-                }}
+                style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif", lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d", outline: "none", overflowY: "auto" }}
               />
 
               <button className="cg-send" onClick={handleSend}
                 disabled={(!inputHasText && !selectedImage) || isTyping || !activeSession}
-                style={{
-                  width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0,
-                  background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#ffffff08",
-                  border: "none",
-                  cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default",
-                  color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#334155",
-                  fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.15s ease",
-                  boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none"
-                }}>↑</button>
+                style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#ffffff08", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#334155", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
             </div>
 
             <div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#0f1c2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
-              ENTER to send · SHIFT+ENTER new line · 📎 image → Llama-4-Scout → {activeModel?.label ?? "base model"}
+              ENTER to send · SHIFT+ENTER new line · Ctrl+V paste image · 📎 attach
             </div>
           </div>
         </div>
