@@ -103,7 +103,7 @@ Rules:
         inputs: mistralInputs,
         instructions: systemPrompt,
         temperature: 0.7,
-        maxTokens: 1024,
+        maxTokens: 4096,
         tools: []
       })
 

@@ -244,11 +244,12 @@ export default function CodingGuru() {
   }
 
   async function handleCreateSession() {
+    const savedModel = localStorage.getItem('cg-default-model') ?? 'openai/gpt-oss-120b'
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New Chat", model: "openai/gpt-oss-120b" })
+        body: JSON.stringify({ name: "New Chat", model: savedModel })
       });
       const session = await res.json();
       setSessions(prev => [{ ...session, messages: [], pinned: false }, ...prev]);
@@ -411,6 +412,7 @@ export default function CodingGuru() {
   async function handleSwitchModel(modelId: string) {
     if (!activeSessionId) return;
     setShowModelPicker(false);
+    localStorage.setItem('cg-default-model', modelId)
     try {
       await fetch("/api/chat", {
         method: "PATCH",
