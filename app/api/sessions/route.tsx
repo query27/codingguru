@@ -3,7 +3,10 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   const sessions = await prisma.session.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: [
+      { pinned: 'desc' },
+      { createdAt: 'desc' }
+    ],
     include: {
       messages: { orderBy: { createdAt: 'asc' } }
     }
@@ -20,10 +23,13 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { sessionId, name } = await req.json()
+  const { sessionId, name, pinned } = await req.json()
   const session = await prisma.session.update({
     where: { id: sessionId },
-    data: { name }
+    data: {
+      ...(name !== undefined && { name }),
+      ...(pinned !== undefined && { pinned }),
+    }
   })
   return NextResponse.json(session)
 }

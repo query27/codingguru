@@ -28,6 +28,7 @@ type Session = {
   id: string;
   name: string;
   model: string;
+  pinned: boolean;
   createdAt: string;
   messages: Message[];
 };
@@ -249,7 +250,7 @@ export default function CodingGuru() {
         body: JSON.stringify({ name: "New Chat", model: "openai/gpt-oss-120b" })
       });
       const session = await res.json();
-      setSessions(prev => [{ ...session, messages: [] }, ...prev]);
+      setSessions(prev => [{ ...session, messages: [], pinned: false }, ...prev]);
       setActiveSessionId(session.id);
     } catch {
       setError("Failed to create session");
@@ -274,6 +275,29 @@ export default function CodingGuru() {
     }
   }
 
+  async function handlePinSession(sessionId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+    const newPinned = !session.pinned;
+    try {
+      await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, pinned: newPinned })
+      });
+      setSessions(prev => {
+        const updated = prev.map(s => s.id === sessionId ? { ...s, pinned: newPinned } : s);
+        return [
+          ...updated.filter(s => s.pinned),
+          ...updated.filter(s => !s.pinned)
+        ];
+      });
+    } catch {
+      setError("Failed to pin session");
+    }
+  }
+
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -289,7 +313,6 @@ export default function CodingGuru() {
     e.target.value = "";
   }
 
-  // Auto name session after first message
   async function autoNameSession(sessionId: string, firstMessage: string) {
     try {
       const res = await fetch("/api/sessions/autonaming", {
@@ -298,18 +321,14 @@ export default function CodingGuru() {
         body: JSON.stringify({ message: firstMessage })
       });
       const { name } = await res.json();
-
       await fetch("/api/sessions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, name })
       });
-
-      setSessions(prev => prev.map(s =>
-        s.id === sessionId ? { ...s, name } : s
-      ));
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name } : s));
     } catch {
-      // Silently fail — not critical
+      // Silently fail
     }
   }
 
@@ -420,13 +439,11 @@ export default function CodingGuru() {
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes cgSlide {
-          from { opacity: 0; transform: translateX(-4px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
         .cg-session:hover .cg-del { opacity: 1 !important; }
+        .cg-session:hover .cg-pin { opacity: 1 !important; }
         .cg-session:hover { background: #ffffff07 !important; }
         .cg-session.active { background: #00ff9d08 !important; border-color: #00ff9d22 !important; }
+        .cg-session.pinned { border-color: #00ff9d18 !important; }
         .cg-model-opt:hover { background: #ffffff08 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
         .cg-new:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
@@ -449,13 +466,11 @@ export default function CodingGuru() {
             </div>
           </div>
 
-          {/* New session */}
-          {/* New session */}
+          {/* New Chat button */}
           <div style={{ padding: "12px 10px 6px" }}>
             <button className="cg-new" onClick={handleCreateSession} style={{
-              width: "100%", padding: "8px", borderRadius: "8px",
-              border: "1px dashed #ffffff18", background: "transparent",
-              color: "#475569", fontSize: "12px", cursor: "pointer",
+              width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #ffffff18",
+              background: "transparent", color: "#475569", fontSize: "12px", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
               transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif"
             }}>
@@ -469,23 +484,57 @@ export default function CodingGuru() {
               <div style={{ padding: "20px", textAlign: "center", color: "#334155", fontSize: "12px" }}>Loading...</div>
             ) : sessions.length === 0 ? (
               <div style={{ padding: "20px 12px", textAlign: "center", color: "#334155", fontSize: "12px" }}>No sessions yet</div>
-            ) : sessions.map(session => {
-              const model = MODELS.find(m => m.id === session.model);
-              const isActive = session.id === activeSessionId;
-              return (
-                <div key={session.id} className={`cg-session ${isActive ? "active" : ""}`}
-                  onClick={() => setActiveSessionId(session.id)}
-                  style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "140px", animation: "cgSlide 0.3s ease" }}>{session.name}</span>
-                    <button className="cg-del" onClick={(e) => handleDeleteSession(session.id, e)}
-                      style={{ opacity: 0, background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "12px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>✕</button>
-                  </div>
-                  {model && <div style={{ marginTop: "3px", fontSize: "10px", color: model.color, opacity: 0.7, fontFamily: "'JetBrains Mono', monospace" }}>{model.label}</div>}
-                </div>
-              );
-            })}
+            ) : (
+              <>
+                {/* Pinned label */}
+                {sessions.some(s => s.pinned) && (
+                  <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#334155", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>
+                )}
+                {sessions.map((session, index) => {
+                  const model = MODELS.find(m => m.id === session.model);
+                  const isActive = session.id === activeSessionId;
+                  const prevSession = sessions[index - 1];
+                  const showOthersLabel = !session.pinned && prevSession?.pinned;
+
+                  return (
+                    <div key={session.id}>
+                      {/* Others label */}
+                      {showOthersLabel && sessions.some(s => s.pinned) && (
+                        <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#334155", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>
+                      )}
+                      <div
+                        className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`}
+                        onClick={() => setActiveSessionId(session.id)}
+                        style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
+                            {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
+                            {session.name}
+                          </span>
+                          <div style={{ display: "flex", gap: "2px", alignItems: "center" }}>
+                            <button
+                              className="cg-pin"
+                              onClick={(e) => handlePinSession(session.id, e)}
+                              title={session.pinned ? "Unpin" : "Pin"}
+                              style={{ opacity: session.pinned ? 0.6 : 0, background: "none", border: "none", color: session.pinned ? "#00ff9d" : "#475569", cursor: "pointer", fontSize: "10px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}
+                            >
+                              {session.pinned ? "⏬" : "📌"}
+                            </button>
+                            <button
+                              className="cg-del"
+                              onClick={(e) => handleDeleteSession(session.id, e)}
+                              style={{ opacity: 0, background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "12px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}
+                            >✕</button>
+                          </div>
+                        </div>
+                        {model && <div style={{ marginTop: "3px", fontSize: "10px", color: model.color, opacity: 0.7, fontFamily: "'JetBrains Mono', monospace" }}>{model.label}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
 
           {/* Footer */}
@@ -502,7 +551,10 @@ export default function CodingGuru() {
           <div style={{ padding: "12px 18px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#080c14" }}>
             {activeSession ? (
               <div>
-                <div style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0" }}>{activeSession.name}</div>
+                <div style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", display: "flex", alignItems: "center", gap: "6px" }}>
+                  {activeSession.pinned && <span style={{ fontSize: "12px" }}>📌</span>}
+                  {activeSession.name}
+                </div>
                 <div style={{ fontSize: "10px", color: "#334155", fontFamily: "'JetBrains Mono', monospace" }}>
                   {activeMessages.length} messages · 👁 vision via Llama-4-Scout
                 </div>
@@ -511,6 +563,7 @@ export default function CodingGuru() {
               <div style={{ fontSize: "14px", color: "#334155" }}>Select a session</div>
             )}
 
+            {/* Model switcher */}
             {activeSession && (
               <div style={{ position: "relative" }}>
                 <button onClick={() => setShowModelPicker(p => !p)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#ffffff07", border: "1px solid #ffffff0e", color: activeModel?.color ?? "#64748b", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
@@ -574,8 +627,6 @@ export default function CodingGuru() {
 
           {/* Input */}
           <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#080c14", borderTop: "1px solid #ffffff0a" }}>
-
-            {/* Image preview */}
             {selectedImagePreview && (
               <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
                 <img src={selectedImagePreview} alt="preview" style={{ height: "60px", borderRadius: "8px", border: "1px solid #00ff9d44", display: "block" }} />

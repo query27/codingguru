@@ -53,12 +53,14 @@ export async function POST(req: Request) {
     })
 
     // 3. Build history
-    const history = session.messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content
-    }))
+    const history = session.messages
+      .slice(-4)
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }))
 
-    // 4. Build messages with updated system prompt
+    // 4. Build messages with system prompt
     const messages: any[] = [
       {
         role: 'system',
@@ -103,7 +105,7 @@ Rules:
       }
     })
 
-    // 7. If image was used, save Scout's analysis as context
+    // 7. Save Scout's analysis as context if image was used
     if (imageContext) {
       await prisma.message.create({
         data: {

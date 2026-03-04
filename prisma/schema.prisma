@@ -11,6 +11,7 @@ model Session {
   id        String    @id @default(cuid())
   name      String
   model     String    @default("openai/gpt-oss-120b")
+  pinned    Boolean   @default(false)
   createdAt DateTime  @default(now())
   messages  Message[]
 }
