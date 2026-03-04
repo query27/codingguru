@@ -30,14 +30,8 @@ export async function POST(req: Request) {
           {
             role: 'user',
             content: [
-              {
-                type: 'image_url',
-                image_url: { url: `data:${imageMimeType};base64,${imageBase64}` }
-              },
-              {
-                type: 'text',
-                text: `Analyze this image briefly. Focus on code, errors, or UI issues. User's message: "${content}"`
-              }
+              { type: 'image_url', image_url: { url: `data:${imageMimeType};base64,${imageBase64}` } },
+              { type: 'text', text: `Analyze this image briefly. Focus on code, errors, or UI issues. User's message: "${content}"` }
             ]
           }
         ]
@@ -61,10 +55,7 @@ export async function POST(req: Request) {
     const olderMessages = allMessages.slice(0, -4)
     const summary =
       olderMessages.length > 0
-        ? `[Earlier in this session: ${olderMessages
-            .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
-            .join(' | ')
-            .slice(0, 800)}]`
+        ? `[Earlier in this session: ${olderMessages.map(m => `${m.role}: ${m.content.slice(0, 150)}`).join(' | ').slice(0, 800)}]`
         : ''
 
     const history = [
@@ -102,7 +93,7 @@ Rules:
     let assistantMessage = ''
 
     if (MISTRAL_MODELS.includes(session.model)) {
-      // --- Mistral call ---
+      // --- Mistral call for codestral-latest ---
       const mistralInputs = messages
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
@@ -112,7 +103,8 @@ Rules:
         inputs: mistralInputs,
         instructions: systemPrompt,
         temperature: 0.7,
-        maxTokens: 1024
+        maxTokens: 1024,
+        tools: []
       })
 
       assistantMessage = response.outputs?.[0]?.content ?? ''
