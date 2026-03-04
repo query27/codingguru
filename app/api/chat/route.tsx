@@ -33,13 +33,13 @@ export async function POST(req: Request) {
               },
               {
                 type: 'text',
-                text: `Analyze this image in detail. Focus on: code, errors, UI, architecture diagrams, or anything technically relevant. Be thorough — your analysis will be used by another AI model to help the user. User's message: "${content}"`
+                text: `Analyze this image briefly. Focus on code, errors, or UI issues. User's message: "${content}"`
               }
             ]
           }
         ]
       })
-      imageContext = visionResponse.choices[0].message.content ?? ''
+      imageContext = visionResponse.choices[0].message.content?.slice(0, 800) ?? ''
     }
 
     // 2. Save user message
@@ -52,13 +52,26 @@ export async function POST(req: Request) {
       }
     })
 
-    // 3. Build history
-    const history = session.messages
-      .slice(-4)
-      .map(m => ({
+    // 3. Smart memory: summarize old messages, keep recent full
+    const allMessages = session.messages
+    const recentMessages = allMessages.slice(-4)
+    const olderMessages = allMessages.slice(0, -4)
+
+    // Compress older messages into a short summary
+    const summary = olderMessages.length > 0
+      ? `[Earlier in this session: ${olderMessages
+          .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
+          .join(' | ')
+          .slice(0, 800)}]`
+      : ''
+
+    const history = [
+      ...(summary ? [{ role: 'system' as const, content: summary }] : []),
+      ...recentMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content
+        content: m.content.slice(0, 800)
       }))
+    ]
 
     // 4. Build messages with system prompt
     const messages: any[] = [
@@ -83,7 +96,9 @@ Rules:
       ...history,
       {
         role: 'user',
-        content: imageBase64 ? `📎 [Image attached]\n${content}` : content
+        content: imageBase64
+          ? `📎 [Image attached]\n${content}`
+          : content
       }
     ]
 
