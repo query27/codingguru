@@ -11,14 +11,14 @@ export async function POST(req: Request) {
     messages: [
       {
         role: 'system',
-        content: 'You are a chat title generator. Generate a short 4-5 word title for a chat based on the first message. Return ONLY the title, no quotes, no punctuation, no explanation.'
+        content: 'Generate a 2-4 word chat title. ONLY output the title. No punctuation, no quotes, no explanation. Max 4 words. Examples: "Webhook Duplicate Fix", "React Hook Error", "SQL Query Help"'
       },
       {
         role: 'user',
         content: message
       }
     ],
-    max_tokens: 20
+    max_tokens: 10
   })
 
   const name = completion.choices[0].message.content?.trim() ?? 'New Session'
