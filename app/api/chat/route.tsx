@@ -7,7 +7,8 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const mistral = new Mistral({ apiKey: process.env.MISTRAL_API_KEY })
 
 const VISION_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct'
-const MISTRAL_MODELS = ['mistral-large-2512', 'mistral-large-latest', 'codestral-latest']
+const MISTRAL_MODELS = ['mistral-large-2512', 'mistral-large-latest', 'mistral-large-2411', 'codestral-latest']
+const MISTRAL_LARGE_MODELS = ['mistral-large-2512', 'mistral-large-latest', 'mistral-large-2411']
 
 const MISTRAL_TOOLS = [
   { type: 'web_search' },
@@ -15,18 +16,15 @@ const MISTRAL_TOOLS = [
   { type: 'code_interpreter' },
 ]
 
-// Parse Mistral outputs array → extract text + images + code results
 function parseMistralOutputs(outputs: any[]): { text: string; images: string[] } {
   let text = ''
   const images: string[] = []
 
   for (const output of outputs) {
     if (output.type === 'message.output') {
-      // Handle plain string content (Codestral returns this)
       if (typeof output.content === 'string') {
         text += output.content
       }
-      // Handle array content (Mistral Large returns this)
       if (Array.isArray(output.content)) {
         for (const item of output.content) {
           if (item.type === 'text') text += item.text ?? ''
@@ -58,8 +56,9 @@ export async function POST(req: Request) {
     if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
 
     const isMistral = MISTRAL_MODELS.includes(session.model)
+    const isMistralLarge = MISTRAL_LARGE_MODELS.includes(session.model)
 
-    // 1. If image attached → run through vision model first
+    // 1. Vision — analyze image via Maverick
     let imageContext = ''
     if (imageBase64) {
       const visionResponse = await groq.chat.completions.create({
@@ -93,17 +92,9 @@ export async function POST(req: Request) {
       }
     })
 
-    // 3. Smart memory
-    const allMessages = session.messages
-    const recentMessages = allMessages.slice(-4)
-    const olderMessages = allMessages.slice(0, -4)
-
-    const summary = olderMessages.length > 0
-      ? `[Earlier in this session: ${olderMessages
-          .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
-          .join(' | ')
-          .slice(0, 800)}]`
-      : ''
+    const userContent = imageBase64
+      ? `📎 [Image attached]\n${content}${imageContext ? `\n\n[Image analysis: ${imageContext}]` : ''}`
+      : content
 
     const systemPrompt = `You are CodingGuru, a senior developer and coding assistant. You are direct, concise, and friendly — like a knowledgeable dev friend, not a consultant.
 
@@ -115,43 +106,66 @@ Rules:
 - Ask ONE clarifying question if needed, not a questionnaire
 - Write code immediately when the intent is clear
 - Be conversational, not formal
-- You have full memory of this session only${
-      imageContext
-        ? `\n\n[VISION CONTEXT from image analysis]\n${imageContext}\n[END VISION CONTEXT]\nUse this context to answer the user's question about the image.`
-        : ''
-    }${summary ? `\n\n${summary}` : ''}`
-
-    const userContent = imageBase64 ? `📎 [Image attached]\n${content}` : content
+- Remember everything the user tells you about themselves, their projects, and preferences`
 
     let assistantMessage = ''
     let generatedImages: string[] = []
 
     if (isMistral) {
       // ── MISTRAL PATH ──────────────────────────────────────────
-      const mistralMessages: any[] = [
-        ...recentMessages.map(m => ({
-          role: m.role,
-          content: m.content.slice(0, 800)
-        })),
-        { role: 'user', content: userContent }
-      ]
+      let response: any
 
-      const response = await mistral.beta.conversations.start({
-        model: session.model,
-        inputs: mistralMessages,
-        instructions: systemPrompt,
-        temperature: 0.7,
-        maxTokens: 4096,
-        ...(session.model === 'codestral-latest' ? {} : { tools: MISTRAL_TOOLS as any }),
-      })
-      console.log('FULL OUTPUTS:', JSON.stringify(response.outputs, null, 2))
+      if (isMistralLarge && session.mistralConversationId) {
+        // Continue existing conversation — Mistral handles ALL memory natively
+        console.log('Appending to conversation:', session.mistralConversationId)
+        response = await mistral.beta.conversations.append({
+          conversationId: session.mistralConversationId,
+          conversationAppendRequest: {
+            inputs: [{ role: 'user', content: userContent }],
+            tools: MISTRAL_TOOLS as any,
+          } as any
+        })
 
-      const parsed = await parseMistralOutputs(response.outputs ?? [], mistral)
+      } else {
+        // Start brand new conversation
+        console.log('Starting new conversation for model:', session.model)
+        response = await mistral.beta.conversations.start({
+          model: session.model,
+          inputs: [{ role: 'user', content: userContent }],
+          instructions: systemPrompt,
+          temperature: 0.7,
+          maxTokens: 2048,
+          ...(session.model !== 'codestral-latest' ? { tools: MISTRAL_TOOLS as any } : {}),
+        })
+
+        // Save conversation ID for Mistral Large — enables native memory
+        const convId = (response as any).conversationId
+        if (isMistralLarge && convId) {
+          console.log('Saving conversation ID:', convId)
+          await prisma.session.update({
+            where: { id: sessionId },
+            data: { mistralConversationId: convId }
+          })
+        }
+      }
+
+      const parsed = parseMistralOutputs(response.outputs ?? [])
       assistantMessage = parsed.text || 'Done!'
       generatedImages = parsed.images
 
     } else {
-      // ── GROQ PATH ─────────────────────────────────────────────
+      // ── GROQ PATH — smart memory for limited token models ─────
+      const allMessages = session.messages
+      const recentMessages = allMessages.slice(-4)
+      const olderMessages = allMessages.slice(0, -4)
+
+      const summary = olderMessages.length > 0
+        ? `[Earlier in this session: ${olderMessages
+            .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
+            .join(' | ')
+            .slice(0, 800)}]`
+        : ''
+
       const history = [
         ...(summary ? [{ role: 'system' as const, content: summary }] : []),
         ...recentMessages.map(m => ({
@@ -161,7 +175,10 @@ Rules:
       ]
 
       const messages: any[] = [
-        { role: 'system', content: systemPrompt },
+        {
+          role: 'system',
+          content: systemPrompt + (imageContext ? `\n\n[VISION CONTEXT]\n${imageContext}\n[END VISION CONTEXT]` : '')
+        },
         ...history,
         { role: 'user', content: userContent }
       ]
@@ -174,7 +191,7 @@ Rules:
       assistantMessage = completion.choices[0].message.content ?? ''
     }
 
-    // 4. Save assistant response
+    // 3. Save assistant response
     const saved = await prisma.message.create({
       data: {
         sessionId,
@@ -184,7 +201,7 @@ Rules:
       }
     })
 
-    // 5. Save Scout's vision analysis if image was used
+    // 4. Save vision analysis
     if (imageContext) {
       await prisma.message.create({
         data: {
@@ -212,9 +229,15 @@ Rules:
 
 export async function PATCH(req: Request) {
   const { sessionId, model } = await req.json()
-  const session = await prisma.session.update({
+
+  // Reset Mistral conversation ID on model switch → forces fresh conversation
+  await prisma.session.update({
     where: { id: sessionId },
-    data: { model }
+    data: {
+      model,
+      mistralConversationId: null
+    }
   })
-  return NextResponse.json(session)
+
+  return NextResponse.json({ success: true })
 }
