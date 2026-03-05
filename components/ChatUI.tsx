@@ -47,9 +47,9 @@ function CopyButton({ code }: { code: string }) {
       }}
       style={{
         background: copied ? "#00ff9d18" : "transparent",
-        border: `1px solid ${copied ? "#00ff9d44" : "#ffffff14"}`,
+        border: `1px solid ${copied ? "#00ff9d44" : "#333"}`,
         borderRadius: "5px", padding: "3px 10px",
-        color: copied ? "#00ff9d" : "#475569",
+        color: copied ? "#00ff9d" : "#94a3b8",
         fontSize: "11px", cursor: "pointer",
         fontFamily: "'JetBrains Mono', monospace",
         transition: "all 0.2s ease",
@@ -71,8 +71,8 @@ function MessageBubble({ msg }: { msg: Message }) {
     }}>
       <div style={{
         width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-        background: isUser ? "#6366f122" : "#ffffff08",
-        border: isUser ? "1px solid #6366f133" : "1px solid #ffffff0e",
+        background: isUser ? "#6366f122" : "#333",
+        border: isUser ? "1px solid #6366f133" : "1px solid #333",
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: "12px", marginTop: "2px"
       }}>
@@ -85,15 +85,15 @@ function MessageBubble({ msg }: { msg: Message }) {
         <div style={{
           padding: "10px 14px",
           borderRadius: isUser ? "14px 4px 14px 14px" : "4px 14px 14px 14px",
-          background: isUser ? "#6366f118" : "#ffffff07",
-          border: isUser ? "1px solid #6366f122" : "1px solid #ffffff0e",
-          color: "#cbd5e1", fontSize: "13.5px", lineHeight: "1.65",
+          background: isUser ? "#424242" : "#2a2a2a",
+          border: isUser ? "1px solid #555" : "1px solid #333",
+          color: "#e2e8f0", fontSize: "13.5px", lineHeight: "1.65",
           fontFamily: "'Inter', sans-serif", wordBreak: "break-word",
         }}>
           {isUser && msg.imagePreview && (
             <img src={msg.imagePreview} alt="attached" style={{
               maxWidth: "200px", maxHeight: "200px", borderRadius: "8px",
-              marginBottom: "6px", display: "block", border: "1px solid #ffffff14"
+              marginBottom: "6px", display: "block", border: "1px solid #333"
             }} />
           )}
           {isUser ? (
@@ -111,21 +111,21 @@ function MessageBubble({ msg }: { msg: Message }) {
                       <div style={{ margin: "8px 0" }}>
                         <div style={{
                           display: "flex", justifyContent: "space-between", alignItems: "center",
-                          padding: "6px 12px", background: "#0d1117",
-                          borderRadius: "8px 8px 0 0", border: "1px solid #ffffff0e", borderBottom: "none",
+                          padding: "6px 12px", background: "#1a1a1a",
+                          borderRadius: "8px 8px 0 0", border: "1px solid #333", borderBottom: "none",
                         }}>
-                          <span style={{ fontSize: "11px", color: "#475569", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
+                          <span style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
                           <CopyButton code={codeString} />
                         </div>
                         <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div"
-                          customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #ffffff0e", borderTop: "none", background: "#0a0f1a" }}
+                          customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #333", borderTop: "none", background: "#1a1a1a" }}
                           {...props}
                         >
                           {codeString}
                         </SyntaxHighlighter>
                       </div>
                     ) : (
-                      <code style={{ background: "#ffffff10", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d" }} {...props}>{children}</code>
+                      <code style={{ background: "#333", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d" }} {...props}>{children}</code>
                     );
                   },
                   p: ({ children }: any) => <p style={{ margin: "4px 0", lineHeight: "1.65" }}>{children}</p>,
@@ -144,8 +144,8 @@ function MessageBubble({ msg }: { msg: Message }) {
                       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table>
                     </div>
                   ),
-                  th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #ffffff14", color: "#94a3b8", fontWeight: 600, background: "#ffffff05" }}>{children}</th>,
-                  td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #ffffff08", color: "#cbd5e1" }}>{children}</td>,
+                  th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #333", color: "#94a3b8", fontWeight: 600, background: "#333" }}>{children}</th>,
+                  td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #333", color: "#cbd5e1" }}>{children}</td>,
                 }}
               >
                 {msg.content}
@@ -182,7 +182,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 function TypingDots() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 16px" }}>
-      <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#ffffff08", border: "1px solid #ffffff0e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>⚡</div>
+      <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#333", border: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>⚡</div>
       <div style={{ display: "flex", gap: "3px" }}>
         {[0, 1, 2].map(i => (
           <div key={i} style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
@@ -451,7 +451,7 @@ export default function CodingGuru() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { height: 100%; overflow: hidden; background: #161b22; }
+        html, body { height: 100%; overflow: hidden; background: #212121; }
         @keyframes cgBounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
           40% { transform: translateY(-5px); opacity: 1; }
@@ -463,24 +463,24 @@ export default function CodingGuru() {
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover .cg-pin { opacity: 1 !important; }
-        .cg-session:hover { background: #ffffff07 !important; }
-        .cg-session.active { background: #00ff9d08 !important; border-color: #00ff9d22 !important; }
+        .cg-session:hover { background: #2a2a2a !important; }
+        .cg-session.active { background: #333 !important; border-color: #444 !important; }
         .cg-session.pinned { border-color: #00ff9d18 !important; }
-        .cg-model-opt:hover { background: #ffffff08 !important; }
+        .cg-model-opt:hover { background: #333 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
         .cg-new:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
         .cg-attach:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
         ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: #ffffff12; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
       `}</style>
 
-      <div style={{ display: "flex", height: "100vh", width: "100%", background: "#161b22", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
+      <div style={{ display: "flex", height: "100vh", width: "100%", background: "#212121", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
 
         {/* SIDEBAR */}
-        <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#1a2030", borderRight: "1px solid #ffffff0a", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#2a2a2a", borderRight: "1px solid #333", display: "flex", flexDirection: "column" }}>
 
           {/* Logo */}
-          <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #00ff9d, #00c4f0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", boxShadow: "0 0 16px #00ff9d33", flexShrink: 0 }}>⚡</div>
             <div>
               <div style={{ fontSize: "14px", fontWeight: 600, color: "#f1f5f9", letterSpacing: "-0.2px" }}>CodingGuru</div>
@@ -491,8 +491,8 @@ export default function CodingGuru() {
           {/* New Chat */}
           <div style={{ padding: "12px 10px 6px" }}>
             <button className="cg-new" onClick={handleCreateSession} style={{
-              width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #ffffff18",
-              background: "transparent", color: "#475569", fontSize: "12px", cursor: "pointer",
+              width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #333",
+              background: "transparent", color: "#94a3b8", fontSize: "12px", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
               transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif"
             }}>
@@ -503,13 +503,13 @@ export default function CodingGuru() {
           {/* Sessions list */}
           <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
             {loading ? (
-              <div style={{ padding: "20px", textAlign: "center", color: "#334155", fontSize: "12px" }}>Loading...</div>
+              <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>Loading...</div>
             ) : sessions.length === 0 ? (
-              <div style={{ padding: "20px 12px", textAlign: "center", color: "#334155", fontSize: "12px" }}>No sessions yet</div>
+              <div style={{ padding: "20px 12px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>No sessions yet</div>
             ) : (
               <>
                 {sessions.some(s => s.pinned) && (
-                  <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#334155", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>
+                  <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>
                 )}
                 {sessions.map((session, index) => {
                   const model = MODELS.find(m => m.id === session.model);
@@ -519,7 +519,7 @@ export default function CodingGuru() {
                   return (
                     <div key={session.id}>
                       {showChatsLabel && sessions.some(s => s.pinned) && (
-                        <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#334155", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>
+                        <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>
                       )}
                       <div
                         className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`}
@@ -527,20 +527,22 @@ export default function CodingGuru() {
                         style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
                             {session.name}
                           </span>
                           <div style={{ display: "flex", gap: "2px", alignItems: "center" }}>
                             <button className="cg-pin" onClick={(e) => handlePinSession(session.id, e)} title={session.pinned ? "Unpin" : "Pin"}
-                              style={{ opacity: session.pinned ? 0.6 : 0, background: "none", border: "none", color: session.pinned ? "#00ff9d" : "#475569", cursor: "pointer", fontSize: "10px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>
+                              style={{ opacity: session.pinned ? 0.6 : 0, background: "none", border: "none", color: session.pinned ? "#00ff9d" : "#94a3b8", cursor: "pointer", fontSize: "10px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>
                               {session.pinned ? "📍" : "📌"}
                             </button>
                             <button className="cg-del" onClick={(e) => handleDeleteSession(session.id, e)}
-                              style={{ opacity: 0, background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: "12px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>✕</button>
+                              style={{ opacity: 0, background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "12px", padding: "2px 4px", borderRadius: "4px", transition: "opacity 0.15s ease", flexShrink: 0 }}>✕</button>
                           </div>
                         </div>
-                        {model && <div style={{ marginTop: "3px", fontSize: "10px", color: model.color, opacity: 0.7, fontFamily: "'JetBrains Mono', monospace" }}>{model.label}</div>}
+                        <div style={{ marginTop: "3px", fontSize: "10px", color: "#4ade80", opacity: 0.7, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {new Date(session.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric",year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
                       </div>
                     </div>
                   );
@@ -550,7 +552,7 @@ export default function CodingGuru() {
           </div>
 
           {/* Footer */}
-          <div style={{ padding: "10px 14px", borderTop: "1px solid #ffffff0a", display: "flex", alignItems: "center", gap: "6px" }}>
+          <div style={{ padding: "10px 14px", borderTop: "1px solid #333", display: "flex", alignItems: "center", gap: "6px" }}>
             <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: "cgPulse 2s infinite", boxShadow: "0 0 5px #00ff9d", flexShrink: 0 }} />
             <span style={{ fontSize: "9px", color: "#1e3a2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>GROQCLOUD · MISTRAL CONNECTED</span>
           </div>
@@ -560,35 +562,35 @@ export default function CodingGuru() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", minWidth: 0 }}>
 
           {/* Header */}
-          <div style={{ padding: "12px 18px", borderBottom: "1px solid #ffffff0a", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#161b22" }}>
+          <div style={{ padding: "12px 18px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#212121" }}>
             {activeSession ? (
               <div>
                 <div style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", display: "flex", alignItems: "center", gap: "6px" }}>
                   {activeSession.pinned && <span style={{ fontSize: "12px" }}>📌</span>}
                   {activeSession.name}
                 </div>
-                <div style={{ fontSize: "10px", color: "#334155", fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: "10px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
                   {activeMessages.length} messages · 👁 vision via Llama-4-Maverick
                 </div>
               </div>
             ) : (
-              <div style={{ fontSize: "14px", color: "#334155" }}>Select a session</div>
+              <div style={{ fontSize: "14px", color: "#64748b" }}>Select a session</div>
             )}
 
             {activeSession && (
               <div style={{ position: "relative" }}>
-                <button onClick={() => setShowModelPicker(p => !p)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#ffffff07", border: "1px solid #ffffff0e", color: activeModel?.color ?? "#64748b", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: activeModel?.color ?? "#64748b", flexShrink: 0, boxShadow: `0 0 6px ${activeModel?.color ?? "#64748b"}` }} />
+                <button onClick={() => setShowModelPicker(p => !p)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#333", border: "1px solid #444", color: activeModel?.color ?? "#94a3b8", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: activeModel?.color ?? "#94a3b8", flexShrink: 0, boxShadow: `0 0 6px ${activeModel?.color ?? "#94a3b8"}` }} />
                   {activeModel?.label ?? "Select Model"}
                   <span style={{ opacity: 0.5, fontSize: "9px" }}>▼</span>
                 </button>
 
                 {showModelPicker && (
-                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#1a2030", border: "1px solid #ffffff0e", borderRadius: "10px", overflow: "hidden", boxShadow: "0 16px 48px #00000088", zIndex: 100, minWidth: "220px", animation: "cgFade 0.15s ease" }}>
-                    <div style={{ padding: "8px 12px 6px", fontSize: "9px", color: "#334155", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1.2px", borderBottom: "1px solid #ffffff08" }}>SWITCH MODEL</div>
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#2a2a2a", border: "1px solid #333", borderRadius: "10px", overflow: "hidden", boxShadow: "0 16px 48px #00000088", zIndex: 100, minWidth: "220px", animation: "cgFade 0.15s ease" }}>
+                    <div style={{ padding: "8px 12px 6px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1.2px", borderBottom: "1px solid #333" }}>SWITCH MODEL</div>
                     {MODELS.map(model => (
                       <button key={model.id} className="cg-model-opt" onClick={() => handleSwitchModel(model.id)}
-                        style={{ width: "100%", padding: "9px 12px", background: model.id === activeSession.model ? "#ffffff08" : "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "9px", transition: "all 0.1s ease" }}>
+                        style={{ width: "100%", padding: "9px 12px", background: model.id === activeSession.model ? "#333" : "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "9px", transition: "all 0.1s ease" }}>
                         <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: model.color, flexShrink: 0, boxShadow: model.id === activeSession.model ? `0 0 7px ${model.color}` : "none" }} />
                         <span style={{ fontSize: "12px", color: "#cbd5e1", fontFamily: "'Inter', sans-serif" }}>{model.label}</span>
                         {model.id === activeSession.model && <span style={{ marginLeft: "auto", fontSize: "9px", color: model.color, fontFamily: "'JetBrains Mono', monospace" }}>active</span>}
@@ -604,15 +606,15 @@ export default function CodingGuru() {
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
             onClick={() => showModelPicker && setShowModelPicker(false)}>
             {!activeSession ? (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#1e293b", fontSize: "13px" }}>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "13px" }}>
                 Create or select a session to start
               </div>
             ) : activeMessages.length === 0 && !isTyping ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "40px 20px", animation: "cgFade 0.4s ease" }}>
                 <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#00ff9d0a", border: "1px solid #00ff9d18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚡</div>
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "14px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>Start chatting</div>
-                  <div style={{ fontSize: "12px", color: "#1e293b" }}>{activeModel?.label} is ready · attach images via 📎 or Ctrl+V</div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8", marginBottom: "4px" }}>Start chatting</div>
+                  <div style={{ fontSize: "12px", color: "#64748b" }}>{activeModel?.label} is ready · attach images via 📎 or Ctrl+V</div>
                 </div>
               </div>
             ) : (
@@ -637,7 +639,7 @@ export default function CodingGuru() {
           )}
 
           {/* Input */}
-          <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#161b22", borderTop: "1px solid #ffffff0a" }}>
+          <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#212121", borderTop: "1px solid #333" }}>
             {selectedImagePreview && (
               <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
                 <img src={selectedImagePreview} alt="preview" style={{ height: "60px", borderRadius: "8px", border: "1px solid #00ff9d44", display: "block" }} />
@@ -646,11 +648,11 @@ export default function CodingGuru() {
               </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#1e2530", border: "1px solid #ffffff0e", borderRadius: "12px", padding: "8px 8px 8px 14px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#2a2a2a", border: "1px solid #333", borderRadius: "12px", padding: "8px 8px 8px 14px" }}>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
 
               <button className="cg-attach" onClick={() => fileInputRef.current?.click()} disabled={!activeSession}
-                style={{ width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0, background: selectedImage ? "#00ff9d18" : "transparent", border: `1px solid ${selectedImage ? "#00ff9d44" : "#ffffff12"}`, color: selectedImage ? "#00ff9d" : "#334155", cursor: activeSession ? "pointer" : "default", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", marginBottom: "2px" }}>
+                style={{ width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0, background: selectedImage ? "#00ff9d18" : "transparent", border: `1px solid ${selectedImage ? "#00ff9d44" : "#333"}`, color: selectedImage ? "#00ff9d" : "#94a3b8", cursor: activeSession ? "pointer" : "default", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", marginBottom: "2px" }}>
                 📎
               </button>
 
@@ -672,10 +674,10 @@ export default function CodingGuru() {
 
               <button className="cg-send" onClick={handleSend}
                 disabled={(!inputHasText && !selectedImage) || isTyping || !activeSession}
-                style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#ffffff08", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#334155", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
+                style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
             </div>
 
-            <div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#1e2530", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
+            <div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#444", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
               ENTER to send · SHIFT+ENTER new line · Ctrl+V paste image · 📎 attach
             </div>
           </div>

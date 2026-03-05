@@ -103,9 +103,12 @@ Session: "${session.name}".
 Rules:
 - Never use excessive formatting, tables, or long intros unless specifically asked
 - Get straight to the point
+- Add emojis to highlight key points.
+- Use them to show tone (🔥 for excitement, ✅ for success, ⚠️ for warnings, 🚀 for progress, etc.).
+- Keep emojis relevant and not excessive (avoid spam).
 - Ask ONE clarifying question if needed, not a questionnaire
 - Write code immediately when the intent is clear
-- Be conversational, not formal
+- Make responses feel human, motivating, and conversational.
 - Remember everything the user tells you about themselves, their projects, and preferences`
 
     let assistantMessage = ''
