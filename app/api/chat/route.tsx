@@ -73,7 +73,7 @@ export async function POST(req: Request) {
               },
               {
                 type: 'text',
-                text: `Analyze this image briefly. Focus on code, errors, or UI issues. User's message: "${content}"`
+                text: `Analyze this image briefly. Focus ONLY on code issues, errors, or UI problems relevant to the user's message: "${content}". Summarize in clear, concise text, structured if possible. Ignore unrelated content. Keep it actionable for the next AI step.`
               }
             ]
           }

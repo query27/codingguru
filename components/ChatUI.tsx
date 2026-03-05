@@ -356,7 +356,7 @@ export default function CodingGuru() {
   async function handleSend() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
-
+  
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
@@ -364,17 +364,13 @@ export default function CodingGuru() {
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
-
+  
     const imageToSend = selectedImage;
     const mimeToSend = selectedImageMime;
     const previewToSend = selectedImagePreview;
     setSelectedImage(null);
     setSelectedImagePreview(null);
-
-    if (activeMessages.length === 0) {
-      autoNameSession(activeSessionId, content || "Image attached");
-    }
-
+  
     const tempId = `temp-${Date.now()}`;
     const userMsg: Message = {
       id: tempId,
@@ -384,11 +380,11 @@ export default function CodingGuru() {
       createdAt: new Date().toISOString(),
       imagePreview: previewToSend ?? undefined,
     };
-
+  
     setSessions(prev => prev.map(s =>
       s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg] } : s
     ));
-
+  
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -400,10 +396,10 @@ export default function CodingGuru() {
           imageMimeType: mimeToSend,
         })
       });
-
+  
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
       const data = await res.json();
-
+  
       const assistantMsg: Message = {
         id: data.messageId,
         role: "assistant",
@@ -412,10 +408,32 @@ export default function CodingGuru() {
         createdAt: new Date().toISOString(),
         generatedImages: data.generatedImages ?? undefined,
       };
-
+  
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
       ));
+  
+      // 🔥 FIRE AND FORGET AUTONAME (no await, no delay)
+      if (activeMessages.length === 0) {
+        fetch("/api/sessions/autonaming", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: content || "Image attached" })
+        })
+          .then(res => res.json())
+          .then(({ name }) => {
+            fetch("/api/sessions", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: activeSessionId, name })
+            }).then(() => {
+              setSessions(prev => prev.map(s =>
+                s.id === activeSessionId ? { ...s, name } : s
+              ));
+            });
+          })
+          .catch(() => {}); // Silently fail
+      }
     } catch (err: any) {
       setError(err.message ?? "Something went wrong");
       setSessions(prev => prev.map(s =>
@@ -677,9 +695,9 @@ export default function CodingGuru() {
                 style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
             </div>
 
-            <div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#444", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
+            {/*<div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#444", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
               ENTER to send · SHIFT+ENTER new line · Ctrl+V paste image · 📎 attach
-            </div>
+            </div>*/}
           </div>
         </div>
       </div>
