@@ -422,6 +422,7 @@ export default function CodingGuru() {
         })
           .then(res => res.json())
           .then(({ name }) => {
+            // const truncatedName = name.length > 20 ? `${name.substring(0, 20)}...` : name;
             fetch("/api/sessions", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
