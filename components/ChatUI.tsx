@@ -495,9 +495,9 @@ export default function CodingGuru() {
         @keyframes cgStopPulse { 0%, 100% { box-shadow: 0 0 0 0 #ef444433; } 50% { box-shadow: 0 0 0 4px #ef444411; } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover .cg-pin { opacity: 1 !important; }
-        .cg-session:hover { background: #2a2a2a !important; }
-        .cg-session.active { background: #333 !important; border-color: #444 !important; }
-        .cg-session.pinned { border-color: #00ff9d18 !important; }
+        .cg-session:hover { background: #2f2f2f !important; }
+        .cg-session.active { background: #1a2e22 !important; border-color: #00ff9d44 !important; border-left: 2px solid #00ff9d !important; }
+        .cg-session.pinned { border-left: 2px solid #fbbf24 !important; border-color: #fbbf2433 !important; }
         .cg-model-opt:hover { background: #333 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
         .cg-stop:hover { background: #ef444430 !important; border-color: #ef4444 !important; }
@@ -542,9 +542,9 @@ export default function CodingGuru() {
                     <div key={session.id}>
                       {showChatsLabel && sessions.some(s => s.pinned) && <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>}
                       <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`} onClick={() => setActiveSessionId(session.id)}
-                        style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}>
+                        style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "pointer", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", animation: "none", background: "#242424" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#00ff9d" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
                             {session.name}
                           </span>
