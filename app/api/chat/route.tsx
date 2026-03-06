@@ -125,14 +125,19 @@ Rules:
                 } as any
               })
             } else {
+            const historyContext = session.messages.length > 0
+              ? `\n\nFull conversation history (user switched to you from another model, remember everything):\n${
+                  session.messages.map(m => `${m.role}: ${m.content}`).join('\n')
+                }`
+              : ''
               // Start new conversation with streaming
               mistralStream = await (mistral.beta.conversations as any).startStream({
                 model: session.model,
                 inputs: [{ role: 'user', content: userContent }],
-                instructions: systemPrompt,
+                instructions: systemPrompt + historyContext,
                 temperature: 0.7,
                 maxTokens: 2048,
-                ...(session.model !== 'codestral-latest' ? { tools: MISTRAL_TOOLS as any } : {}),
+                ...(session.model !== 'mistral-large-latest' ? { tools: MISTRAL_TOOLS as any } : {}),
               })
             }
 
