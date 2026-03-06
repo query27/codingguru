@@ -104,6 +104,26 @@ function MessageBubble({ msg }: { msg: Message }) {
             <>
               <ReactMarkdown
                 components={{
+                  a: ({ node, ...props }) => (
+                    <a
+                      style={{
+                        color: "#00d4ff", // 🔥 Mistral light blue (matches your theme)
+                        textDecoration: "none",
+                        borderBottom: "1px solid #00d4ff44", // Subtle underline
+                        transition: "all 0.2s ease",
+                        fontWeight: 500,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "#00e8ff"; // Brighter on hover
+                        e.currentTarget.style.borderBottom = "1px solid #00e8ff";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "#00d4ff";
+                        e.currentTarget.style.borderBottom = "1px solid #00d4ff44";
+                      }}
+                      {...props}
+                    />
+                  ),
                   code({ node, inline, className, children, ...props }: any) {
                     const match = /language-(\w+)/.exec(className || "");
                     const codeString = String(children).replace(/\n$/, "");
@@ -422,7 +442,7 @@ export default function CodingGuru() {
         })
           .then(res => res.json())
           .then(({ name }) => {
-            // const truncatedName = name.length > 20 ? `${name.substring(0, 20)}...` : name;
+            // const truncatedName = name.length > 20 ? `${name.substring(0, 20)}...` : name; -- DO STREAMLINE FALSE
             fetch("/api/sessions", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
