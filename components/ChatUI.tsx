@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -25,6 +25,7 @@ type Message = {
   createdAt: string;
   imagePreview?: string;
   generatedImages?: string[];
+  isStreaming?: boolean;
 };
 
 type Session = {
@@ -35,6 +36,45 @@ type Session = {
   createdAt: string;
   messages: Message[];
 };
+
+// Split text into sentences for fade-in effect
+function splitIntoSentences(text: string): string[] {
+  // Split on sentence endings but keep code blocks together
+  const parts: string[] = []
+  let current = ''
+  let inCodeBlock = false
+
+  const lines = text.split('\n')
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock
+      current += line + '\n'
+      if (!inCodeBlock) {
+        parts.push(current.trim())
+        current = ''
+      }
+      continue
+    }
+
+    if (inCodeBlock) {
+      current += line + '\n'
+      continue
+    }
+
+    current += line + '\n'
+
+    // Sentence ending outside code block
+    if (/[.!?]\s*$/.test(line.trim()) || line.trim() === '') {
+      if (current.trim()) {
+        parts.push(current.trim())
+        current = ''
+      }
+    }
+  }
+
+  if (current.trim()) parts.push(current.trim())
+  return parts.filter(Boolean)
+}
 
 function CopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -57,6 +97,156 @@ function CopyButton({ code }: { code: string }) {
     >
       {copied ? "✓ copied" : "copy"}
     </button>
+  );
+}
+
+function StreamingMessage({ content, model, generatedImages, isStreaming }: {
+  content: string;
+  model: string;
+  generatedImages?: string[];
+  isStreaming?: boolean;
+}) {
+  const modelInfo = MODELS.find(m => m.id === model);
+  const [visibleSentences, setVisibleSentences] = useState<string[]>([]);
+  const [displayedCount, setDisplayedCount] = useState(0);
+  const prevContentRef = useRef('');
+
+  useEffect(() => {
+    if (!isStreaming) {
+      // Done — show all at once cleanly
+      setVisibleSentences(splitIntoSentences(content));
+      setDisplayedCount(999);
+      return;
+    }
+
+    // Only process new content
+    if (content === prevContentRef.current) return;
+    prevContentRef.current = content;
+
+    const sentences = splitIntoSentences(content);
+    setVisibleSentences(sentences);
+
+    // Reveal new sentences one by one
+    if (sentences.length > displayedCount) {
+      setDisplayedCount(sentences.length);
+    }
+  }, [content, isStreaming]);
+
+  const markdownComponents = {
+    a: ({ node, ...props }: any) => (
+      <a
+        style={{
+          color: "#00d4ff",
+          textDecoration: "none",
+          borderBottom: "1px solid #00d4ff44",
+          transition: "all 0.2s ease",
+          fontWeight: 500,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "#00e8ff";
+          e.currentTarget.style.borderBottom = "1px solid #00e8ff";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "#00d4ff";
+          e.currentTarget.style.borderBottom = "1px solid #00d4ff44";
+        }}
+        {...props}
+      />
+    ),
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || "");
+      const codeString = String(children).replace(/\n$/, "");
+      return !inline && match ? (
+        <div style={{ margin: "8px 0" }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "6px 12px", background: "#1a1a1a",
+            borderRadius: "8px 8px 0 0", border: "1px solid #333", borderBottom: "none",
+          }}>
+            <span style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
+            <CopyButton code={codeString} />
+          </div>
+          <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div"
+            customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #333", borderTop: "none", background: "#1a1a1a" }}
+            {...props}
+          >
+            {codeString}
+          </SyntaxHighlighter>
+        </div>
+      ) : (
+        <code style={{ background: "#333", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d" }} {...props}>{children}</code>
+      );
+    },
+    p: ({ children }: any) => <p style={{ margin: "4px 0", lineHeight: "1.65" }}>{children}</p>,
+    ul: ({ children }: any) => <ul style={{ paddingLeft: "18px", margin: "6px 0" }}>{children}</ul>,
+    ol: ({ children }: any) => <ol style={{ paddingLeft: "18px", margin: "6px 0" }}>{children}</ol>,
+    li: ({ children }: any) => <li style={{ margin: "3px 0", lineHeight: "1.6" }}>{children}</li>,
+    h1: ({ children }: any) => <h1 style={{ fontSize: "18px", fontWeight: 700, color: "#f1f5f9", margin: "12px 0 6px" }}>{children}</h1>,
+    h2: ({ children }: any) => <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#f1f5f9", margin: "10px 0 5px" }}>{children}</h2>,
+    h3: ({ children }: any) => <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", margin: "8px 0 4px" }}>{children}</h3>,
+    strong: ({ children }: any) => <strong style={{ color: "#f1f5f9", fontWeight: 600 }}>{children}</strong>,
+    blockquote: ({ children }: any) => (
+      <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>
+    ),
+    table: ({ children }: any) => (
+      <div style={{ overflowX: "auto", margin: "8px 0" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table>
+      </div>
+    ),
+    th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #333", color: "#94a3b8", fontWeight: 600, background: "#333" }}>{children}</th>,
+    td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #333", color: "#cbd5e1" }}>{children}</td>,
+  };
+
+  return (
+    <div>
+      {isStreaming ? (
+        // Streaming mode — sentence by sentence fade in
+        <div>
+          {visibleSentences.map((sentence, i) => (
+            <div
+              key={i}
+              style={{
+                animation: `cgSentenceFade 0.4s ease forwards`,
+                opacity: 0,
+                animationDelay: `${Math.min(i * 0.05, 0.3)}s`,
+              }}
+            >
+              <ReactMarkdown components={markdownComponents}>{sentence}</ReactMarkdown>
+            </div>
+          ))}
+          {/* Blinking cursor */}
+          <span style={{
+            display: 'inline-block',
+            width: '2px',
+            height: '14px',
+            background: modelInfo?.color ?? '#00ff9d',
+            marginLeft: '2px',
+            verticalAlign: 'text-bottom',
+            animation: 'cgCursorBlink 0.8s ease infinite',
+          }} />
+        </div>
+      ) : (
+        // Done — render full markdown
+        <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+      )}
+
+      {/* Generated images */}
+      {generatedImages && generatedImages.length > 0 && (
+        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {generatedImages.map((imgUrl, i) => (
+            <div key={i} style={{ animation: 'cgSentenceFade 0.5s ease forwards' }}>
+              <img src={imgUrl} alt={`Generated ${i + 1}`} style={{
+                maxWidth: "100%", borderRadius: "10px",
+                border: "1px solid #ff704344", display: "block"
+              }} />
+              <div style={{ marginTop: "4px", fontSize: "9px", color: "#ff7043", fontFamily: "'JetBrains Mono', monospace" }}>
+                🎨 generated by Mistral
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -101,97 +291,17 @@ function MessageBubble({ msg }: { msg: Message }) {
               {msg.content.replace("📎 [Image attached]\n", "")}
             </span>
           ) : (
-            <>
-              <ReactMarkdown
-                components={{
-                  a: ({ node, ...props }) => (
-                    <a
-                      style={{
-                        color: "#00d4ff", // 🔥 Mistral light blue (matches your theme)
-                        textDecoration: "none",
-                        borderBottom: "1px solid #00d4ff44", // Subtle underline
-                        transition: "all 0.2s ease",
-                        fontWeight: 500,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = "#00e8ff"; // Brighter on hover
-                        e.currentTarget.style.borderBottom = "1px solid #00e8ff";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "#00d4ff";
-                        e.currentTarget.style.borderBottom = "1px solid #00d4ff44";
-                      }}
-                      {...props}
-                    />
-                  ),
-                  code({ node, inline, className, children, ...props }: any) {
-                    const match = /language-(\w+)/.exec(className || "");
-                    const codeString = String(children).replace(/\n$/, "");
-                    return !inline && match ? (
-                      <div style={{ margin: "8px 0" }}>
-                        <div style={{
-                          display: "flex", justifyContent: "space-between", alignItems: "center",
-                          padding: "6px 12px", background: "#1a1a1a",
-                          borderRadius: "8px 8px 0 0", border: "1px solid #333", borderBottom: "none",
-                        }}>
-                          <span style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
-                          <CopyButton code={codeString} />
-                        </div>
-                        <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div"
-                          customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #333", borderTop: "none", background: "#1a1a1a" }}
-                          {...props}
-                        >
-                          {codeString}
-                        </SyntaxHighlighter>
-                      </div>
-                    ) : (
-                      <code style={{ background: "#333", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontFamily: "'JetBrains Mono', monospace", color: "#00ff9d" }} {...props}>{children}</code>
-                    );
-                  },
-                  p: ({ children }: any) => <p style={{ margin: "4px 0", lineHeight: "1.65" }}>{children}</p>,
-                  ul: ({ children }: any) => <ul style={{ paddingLeft: "18px", margin: "6px 0" }}>{children}</ul>,
-                  ol: ({ children }: any) => <ol style={{ paddingLeft: "18px", margin: "6px 0" }}>{children}</ol>,
-                  li: ({ children }: any) => <li style={{ margin: "3px 0", lineHeight: "1.6" }}>{children}</li>,
-                  h1: ({ children }: any) => <h1 style={{ fontSize: "18px", fontWeight: 700, color: "#f1f5f9", margin: "12px 0 6px" }}>{children}</h1>,
-                  h2: ({ children }: any) => <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#f1f5f9", margin: "10px 0 5px" }}>{children}</h2>,
-                  h3: ({ children }: any) => <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", margin: "8px 0 4px" }}>{children}</h3>,
-                  strong: ({ children }: any) => <strong style={{ color: "#f1f5f9", fontWeight: 600 }}>{children}</strong>,
-                  blockquote: ({ children }: any) => (
-                    <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>
-                  ),
-                  table: ({ children }: any) => (
-                    <div style={{ overflowX: "auto", margin: "8px 0" }}>
-                      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table>
-                    </div>
-                  ),
-                  th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #333", color: "#94a3b8", fontWeight: 600, background: "#333" }}>{children}</th>,
-                  td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #333", color: "#cbd5e1" }}>{children}</td>,
-                }}
-              >
-                {msg.content}
-              </ReactMarkdown>
-
-              {msg.generatedImages && msg.generatedImages.length > 0 && (
-                <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {msg.generatedImages.map((imgUrl, i) => (
-                    <div key={i}>
-                      <img src={imgUrl} alt={`Generated ${i + 1}`} style={{
-                        maxWidth: "100%", borderRadius: "10px",
-                        border: "1px solid #ff704344", display: "block"
-                      }} />
-                      <div style={{ marginTop: "4px", fontSize: "9px", color: "#ff7043", fontFamily: "'JetBrains Mono', monospace" }}>
-                        🎨 generated by Mistral
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+            <StreamingMessage
+              content={msg.content}
+              model={msg.model}
+              generatedImages={msg.generatedImages}
+              isStreaming={msg.isStreaming}
+            />
           )}
         </div>
         {!isUser && model && (
           <span style={{ fontSize: "10px", color: model.color, fontFamily: "'JetBrains Mono', monospace", opacity: 0.7 }}>
-            {model.label}
+            {msg.isStreaming ? `${model.label} · generating...` : model.label}
           </span>
         )}
       </div>
@@ -199,14 +309,19 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
-function TypingDots() {
+function TypingDots({ modelLabel, modelColor }: { modelLabel: string; modelColor: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 16px" }}>
       <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "#333", border: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>⚡</div>
-      <div style={{ display: "flex", gap: "3px" }}>
-        {[0, 1, 2].map(i => (
-          <div key={i} style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-        ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <div style={{ display: "flex", gap: "3px", alignItems: "center" }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ width: "5px", height: "5px", borderRadius: "50%", background: modelColor, animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+          ))}
+        </div>
+        <span style={{ fontSize: "9px", color: modelColor, fontFamily: "'JetBrains Mono', monospace", opacity: 0.6 }}>
+          {modelLabel} · thinking...
+        </span>
       </div>
     </div>
   );
@@ -223,6 +338,7 @@ export default function CodingGuru() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageMime, setSelectedImageMime] = useState<string>("image/png");
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -236,7 +352,7 @@ export default function CodingGuru() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages, isTyping]);
+  }, [activeMessages, isTyping, streamingMsgId]);
 
   useEffect(() => {
     if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
@@ -354,29 +470,10 @@ export default function CodingGuru() {
     e.target.value = "";
   }
 
-  async function autoNameSession(sessionId: string, firstMessage: string) {
-    try {
-      const res = await fetch("/api/sessions/autonaming", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: firstMessage })
-      });
-      const { name } = await res.json();
-      await fetch("/api/sessions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, name })
-      });
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name } : s));
-    } catch {
-      // Silently fail
-    }
-  }
-
   async function handleSend() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
-  
+
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
@@ -384,57 +481,130 @@ export default function CodingGuru() {
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
-  
+
     const imageToSend = selectedImage;
     const mimeToSend = selectedImageMime;
     const previewToSend = selectedImagePreview;
     setSelectedImage(null);
     setSelectedImagePreview(null);
-  
-    const tempId = `temp-${Date.now()}`;
-    const userMsg: Message = {
-      id: tempId,
+
+    const currentSessionId = activeSessionId;
+
+    // Add user message
+    const tempUserMsg: Message = {
+      id: `temp-user-${Date.now()}`,
       role: "user",
       content: imageToSend ? `📎 [Image attached]\n${content}` : content,
       model: activeSession!.model,
       createdAt: new Date().toISOString(),
       imagePreview: previewToSend ?? undefined,
     };
-  
+
     setSessions(prev => prev.map(s =>
-      s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg] } : s
+      s.id === currentSessionId ? { ...s, messages: [...s.messages, tempUserMsg] } : s
     ));
-  
+
+    // Add streaming placeholder message
+    const streamingId = `streaming-${Date.now()}`;
+    setStreamingMsgId(streamingId);
+
+    const streamingMsg: Message = {
+      id: streamingId,
+      role: "assistant",
+      content: "",
+      model: activeSession!.model,
+      createdAt: new Date().toISOString(),
+      isStreaming: true,
+    };
+
+    setSessions(prev => prev.map(s =>
+      s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
+    ));
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: activeSessionId,
+          sessionId: currentSessionId,
           content: content || "What do you see in this image?",
           imageBase64: imageToSend,
           imageMimeType: mimeToSend,
         })
       });
-  
+
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
-      const data = await res.json();
-  
-      const assistantMsg: Message = {
-        id: data.messageId,
-        role: "assistant",
-        content: data.message,
-        model: data.model,
-        createdAt: new Date().toISOString(),
-        generatedImages: data.generatedImages ?? undefined,
-      };
-  
-      setSessions(prev => prev.map(s =>
-        s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
-      ));
-  
-      // 🔥 FIRE AND FORGET AUTONAME (no await, no delay)
-      if (activeMessages.length === 0) {
+      if (!res.body) throw new Error("No stream body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedContent = '';
+      let finalImages: string[] | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+
+            if (event.type === 'chunk') {
+              accumulatedContent += event.content;
+              // Update streaming message content
+              setSessions(prev => prev.map(s =>
+                s.id === currentSessionId ? {
+                  ...s,
+                  messages: s.messages.map(m =>
+                    m.id === streamingId ? { ...m, content: accumulatedContent } : m
+                  )
+                } : s
+              ));
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+
+            if (event.type === 'images') {
+              finalImages = event.images;
+            }
+
+            if (event.type === 'done') {
+              // Replace streaming msg with final saved msg
+              setSessions(prev => prev.map(s =>
+                s.id === currentSessionId ? {
+                  ...s,
+                  messages: s.messages.map(m =>
+                    m.id === streamingId ? {
+                      ...m,
+                      id: event.messageId,
+                      content: accumulatedContent,
+                      model: event.model,
+                      isStreaming: false,
+                      generatedImages: finalImages ?? undefined,
+                    } : m
+                  )
+                } : s
+              ));
+              setStreamingMsgId(null);
+            }
+
+            if (event.type === 'error') {
+              throw new Error(event.error);
+            }
+          } catch (parseErr) {
+            // Skip malformed SSE lines
+          }
+        }
+      }
+
+      // Autoname session on first message
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
         fetch("/api/sessions/autonaming", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -442,25 +612,27 @@ export default function CodingGuru() {
         })
           .then(res => res.json())
           .then(({ name }) => {
-            // const truncatedName = name.length > 20 ? `${name.substring(0, 20)}...` : name; -- DO STREAMLINE FALSE
             fetch("/api/sessions", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId: activeSessionId, name })
+              body: JSON.stringify({ sessionId: currentSessionId, name })
             }).then(() => {
               setSessions(prev => prev.map(s =>
-                s.id === activeSessionId ? { ...s, name } : s
+                s.id === currentSessionId ? { ...s, name } : s
               ));
             });
           })
-          .catch(() => {}); // Silently fail
+          .catch(() => {});
       }
+
     } catch (err: any) {
       setError(err.message ?? "Something went wrong");
+      // Remove streaming placeholder
       setSessions(prev => prev.map(s =>
-        s.id === activeSessionId
-          ? { ...s, messages: s.messages.filter(m => m.id !== tempId) } : s
+        s.id === currentSessionId
+          ? { ...s, messages: s.messages.filter(m => m.id !== streamingId) } : s
       ));
+      setStreamingMsgId(null);
     } finally {
       setIsTyping(false);
       inputRef.current?.focus();
@@ -470,7 +642,7 @@ export default function CodingGuru() {
   async function handleSwitchModel(modelId: string) {
     if (!activeSessionId) return;
     setShowModelPicker(false);
-    localStorage.setItem('cg-default-model', modelId)
+    localStorage.setItem('cg-default-model', modelId);
     try {
       await fetch("/api/chat", {
         method: "PATCH",
@@ -498,6 +670,14 @@ export default function CodingGuru() {
         @keyframes cgFade {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes cgSentenceFade {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes cgCursorBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
@@ -580,7 +760,7 @@ export default function CodingGuru() {
                           </div>
                         </div>
                         <div style={{ marginTop: "3px", fontSize: "10px", color: "#4ade80", opacity: 0.7, fontFamily: "'JetBrains Mono', monospace" }}>
-                          {new Date(session.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric",year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {new Date(session.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>
                     </div>
@@ -663,7 +843,10 @@ export default function CodingGuru() {
                     <MessageBubble msg={msg} />
                   </div>
                 ))}
-                {isTyping && <TypingDots />}
+                {/* Show typing dots only before first chunk arrives */}
+                {isTyping && !streamingMsgId && activeModel && (
+                  <TypingDots modelLabel={activeModel.label} modelColor={activeModel.color} />
+                )}
               </>
             )}
             <div ref={messagesEndRef} />
@@ -697,7 +880,7 @@ export default function CodingGuru() {
 
               <textarea
                 ref={inputRef}
-                disabled={!activeSession}
+                disabled={!activeSession || isTyping}
                 onChange={e => setInputHasText(e.target.value.trim().length > 0)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -706,7 +889,7 @@ export default function CodingGuru() {
                   e.target.style.height = "auto";
                   e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
-                placeholder={activeSession ? "Ask anything... or paste image with Ctrl+V" : "Select a session first"}
+                placeholder={activeSession ? (isTyping ? `${activeModel?.label} is generating...` : "Ask anything... or paste image with Ctrl+V") : "Select a session first"}
                 rows={1}
                 style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif", lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d", outline: "none", overflowY: "auto" }}
               />
@@ -715,10 +898,6 @@ export default function CodingGuru() {
                 disabled={(!inputHasText && !selectedImage) || isTyping || !activeSession}
                 style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
             </div>
-
-            {/*<div style={{ textAlign: "center", marginTop: "6px", fontSize: "10px", color: "#444", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px" }}>
-              ENTER to send · SHIFT+ENTER new line · Ctrl+V paste image · 📎 attach
-            </div>*/}
           </div>
         </div>
       </div>

@@ -16,31 +16,14 @@ const MISTRAL_TOOLS = [
   { type: 'code_interpreter' },
 ]
 
-function parseMistralOutputs(outputs: any[]): { text: string; images: string[] } {
-  let text = ''
+function extractImagesFromText(text: string): { text: string; images: string[] } {
   const images: string[] = []
-
-  for (const output of outputs) {
-    if (output.type === 'message.output') {
-      if (typeof output.content === 'string') {
-        text += output.content
-      }
-      if (Array.isArray(output.content)) {
-        for (const item of output.content) {
-          if (item.type === 'text') text += item.text ?? ''
-        }
-      }
-    }
-  }
-
-  // Extract image URLs from markdown
   const urlRegex = /https?:\/\/[^\s\)]+\.(?:jpg|jpeg|png|gif|webp)[^\s\)]*/gi
   const found = text.match(urlRegex)
   if (found) {
     images.push(...found)
     text = text.replace(/\[.*?\]\(https?:\/\/[^\)]+\)/g, '').trim()
   }
-
   return { text: text.trim(), images }
 }
 
@@ -97,136 +80,236 @@ export async function POST(req: Request) {
       : content
 
     const systemPrompt = `You are CodingGuru, a senior developer and coding assistant. You are direct, concise, and friendly — like a knowledgeable dev friend, not a consultant. 
-      - If the user is chill, calm, or serious, mirror that.  
-    - If the user is hype, casual, or bro-style, mirror that with enthusiasm
+- If the user is chill, calm, or serious, mirror that.  
+- If the user is hype, casual, or bro-style, mirror that with enthusiasm
 
 Session: "${session.name}".
 
 Rules:
 - Never use excessive formatting, tables, or long intros unless specifically asked
 - Get straight to the point
-- Add emojis to highlight key points.
-- Use them to show tone (🔥 for excitement, ✅ for success, ⚠️ for warnings, 🚀 for progress, etc.).
-- Keep emojis relevant and not excessive (avoid spam).
+- Add emojis to highlight key points
+- Use them to show tone (🔥 for excitement, ✅ for success, ⚠️ for warnings, 🚀 for progress, etc.)
+- Keep emojis relevant and not excessive (avoid spam)
 - Ask ONE clarifying question if needed, not a questionnaire
 - Write code immediately when the intent is clear
-- Make responses feel human, motivating, and conversational.
+- Make responses feel human, motivating, and conversational
 - Remember everything the user tells you about themselves, their projects, and preferences
-- Offer options / suggestions in a casual, friendly way when appropriate. 
-- Match tone **relative to the user**, not fixed hype.`
+- Offer options / suggestions in a casual, friendly way when appropriate
+- Match tone relative to the user, not fixed hype`
 
+    // ── STREAMING RESPONSE ────────────────────────────────────
+    const encoder = new TextEncoder()
 
-    let assistantMessage = ''
-    let generatedImages: string[] = []
-
-    if (isMistral) {
-      // ── MISTRAL PATH ──────────────────────────────────────────
-      let response: any
-
-      if (isMistralLarge && session.mistralConversationId) {
-        // Continue existing conversation — Mistral handles ALL memory natively
-        console.log('Appending to conversation:', session.mistralConversationId)
-        response = await mistral.beta.conversations.append({
-          conversationId: session.mistralConversationId,
-          conversationAppendRequest: {
-            inputs: [{ role: 'user', content: userContent }],
-            tools: MISTRAL_TOOLS as any,
-          } as any
-        })
-
-      } else {
-        // Start brand new conversation
-        console.log('Starting new conversation for model:', session.model)
-        response = await mistral.beta.conversations.start({
-          model: session.model,
-          inputs: [{ role: 'user', content: userContent }],
-          instructions: systemPrompt,
-          temperature: 0.7,
-          maxTokens: 2048,
-          ...(session.model !== 'codestral-latest' ? { tools: MISTRAL_TOOLS as any } : {}),
-        })
-
-        // Save conversation ID for Mistral Large — enables native memory
-        const convId = (response as any).conversationId
-        if (isMistralLarge && convId) {
-          console.log('Saving conversation ID:', convId)
-          await prisma.session.update({
-            where: { id: sessionId },
-            data: { mistralConversationId: convId }
-          })
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
         }
-      }
 
-      const parsed = parseMistralOutputs(response.outputs ?? [])
-      assistantMessage = parsed.text || 'Done!'
-      generatedImages = parsed.images
+        try {
+          let fullText = ''
+          let generatedImages: string[] = []
 
-    } else {
-      // ── GROQ PATH — smart memory for limited token models ─────
-      const allMessages = session.messages
-      const recentMessages = allMessages.slice(-4)
-      const olderMessages = allMessages.slice(0, -4)
+          if (isMistral) {
+            // ── MISTRAL STREAMING ──────────────────────────────
+            let mistralStream: any
 
-      const summary = olderMessages.length > 0
-        ? `[Earlier in this session: ${olderMessages
-            .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
-            .join(' | ')
-            .slice(0, 800)}]`
-        : ''
+            if (isMistralLarge && session.mistralConversationId) {
+              // Continue conversation with streaming
+              mistralStream = await (mistral.beta.conversations as any).appendStream({
+                conversationId: session.mistralConversationId,
+                conversationAppendStreamRequest: {
+                  inputs: [{ role: 'user', content: userContent }],
+                  tools: MISTRAL_TOOLS as any,
+                } as any
+              })
+            } else {
+              // Start new conversation with streaming
+              mistralStream = await (mistral.beta.conversations as any).startStream({
+                model: session.model,
+                inputs: [{ role: 'user', content: userContent }],
+                instructions: systemPrompt,
+                temperature: 0.7,
+                maxTokens: 2048,
+                ...(session.model !== 'codestral-latest' ? { tools: MISTRAL_TOOLS as any } : {}),
+              })
+            }
 
-      const history = [
-        ...(summary ? [{ role: 'system' as const, content: summary }] : []),
-        ...recentMessages.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content.slice(0, 800)
-        }))
-      ]
+            // Stream Mistral chunks
+            for await (const event of mistralStream) {
+              // Save conversation ID when we get it
+              console.log('STREAM EVENT:', JSON.stringify(event).slice(0, 200))
+              if (event.event === 'message.output.delta') {
+                console.log('DELTA:', JSON.stringify(event.data))
+              }
+              if (event.type === 'conversation.response.started' || event.conversationId) {
+                const convId = event.conversationId ?? event.data?.conversationId
+                if (isMistralLarge && convId && !session.mistralConversationId) {
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { mistralConversationId: convId }
+                  })
+                }
+              }
 
-      const messages: any[] = [
-        {
-          role: 'system',
-          content: systemPrompt + (imageContext ? `\n\n[VISION CONTEXT]\n${imageContext}\n[END VISION CONTEXT]` : '')
-        },
-        ...history,
-        { role: 'user', content: userContent }
-      ]
+              // Text chunks
+              if (event.event === 'message.output.delta') {
+                const chunk = event.data?.content ?? ''
+                if (typeof chunk === 'string' && chunk) {
+                  fullText += chunk
+                  send({ type: 'chunk', content: chunk })
+                }
+              }
+              
+              // Save conversation ID from started event
+              if (event.event === 'conversation.response.started') {
+                const convId = event.data?.conversationId
+                if (isMistralLarge && convId && !session.mistralConversationId) {
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { mistralConversationId: convId }
+                  })
+                }
+              }
 
-      const completion = await groq.chat.completions.create({
-        model: session.model,
-        messages
-      })
+              // Full message output (fallback for non-streaming events)
+              if (event.type === 'message.output' && event.data) {
+                const content = event.data.content
+                if (typeof content === 'string') {
+                  fullText += content
+                  send({ type: 'chunk', content })
+                } else if (Array.isArray(content)) {
+                  for (const item of content) {
+                    if (item.type === 'text' && item.text) {
+                      fullText += item.text
+                      send({ type: 'chunk', content: item.text })
+                    }
+                  }
+                }
+              }
 
-      assistantMessage = completion.choices[0].message.content ?? ''
-    }
+              // Final response event — get conversation ID
+              if (event.type === 'conversation.response.done' || event.type === 'done') {
+                const outputs = event.data?.outputs ?? event.outputs ?? []
+                for (const output of outputs) {
+                  if (output.type === 'message.output') {
+                    const c = output.content
+                    if (typeof c === 'string' && !fullText) fullText = c
+                    if (Array.isArray(c) && !fullText) {
+                      fullText = c.filter((i: any) => i.type === 'text').map((i: any) => i.text ?? '').join('')
+                    }
+                  }
+                }
+                const convId = event.data?.conversationId ?? event.conversationId
+                if (isMistralLarge && convId && !session.mistralConversationId) {
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { mistralConversationId: convId }
+                  })
+                }
+              }
+            }
 
-    // 3. Save assistant response
-    const saved = await prisma.message.create({
-      data: {
-        sessionId,
-        role: 'assistant',
-        content: assistantMessage,
-        model: session.model
+            // Extract images from final text
+            const extracted = extractImagesFromText(fullText)
+            fullText = extracted.text
+            generatedImages = extracted.images
+            if (generatedImages.length > 0) {
+              send({ type: 'images', images: generatedImages })
+            }
+
+          } else {
+            // ── GROQ STREAMING ────────────────────────────────
+            const allMessages = session.messages
+            const recentMessages = allMessages.slice(-4)
+            const olderMessages = allMessages.slice(0, -4)
+
+            const summary = olderMessages.length > 0
+              ? `[Earlier in this session: ${olderMessages
+                  .map(m => `${m.role}: ${m.content.slice(0, 150)}`)
+                  .join(' | ')
+                  .slice(0, 800)}]`
+              : ''
+
+            const history = [
+              ...(summary ? [{ role: 'system' as const, content: summary }] : []),
+              ...recentMessages.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content.slice(0, 800)
+              }))
+            ]
+
+            const messages: any[] = [
+              {
+                role: 'system',
+                content: systemPrompt + (imageContext ? `\n\n[VISION CONTEXT]\n${imageContext}\n[END VISION CONTEXT]` : '')
+              },
+              ...history,
+              { role: 'user', content: userContent }
+            ]
+
+            const groqStream = await groq.chat.completions.create({
+              model: session.model,
+              messages,
+              stream: true,
+            })
+
+            for await (const chunk of groqStream) {
+              const delta = chunk.choices[0]?.delta?.content ?? ''
+              if (delta) {
+                fullText += delta
+                send({ type: 'chunk', content: delta })
+              }
+            }
+          }
+
+          // Save complete assistant message to DB
+          if (!fullText) fullText = 'Done!'
+          const saved = await prisma.message.create({
+            data: {
+              sessionId,
+              role: 'assistant',
+              content: fullText,
+              model: session.model
+            }
+          })
+
+          // Save vision analysis
+          if (imageContext) {
+            await prisma.message.create({
+              data: {
+                sessionId,
+                role: 'assistant',
+                content: `🔍 [Vision Analysis]\n${imageContext}`,
+                model: VISION_MODEL
+              }
+            })
+          }
+
+          // Send done signal with message ID
+          send({
+            type: 'done',
+            messageId: saved.id,
+            model: session.model,
+            generatedImages: generatedImages.length > 0 ? generatedImages : null,
+          })
+
+        } catch (err: any) {
+          console.error('Stream error:', err)
+          send({ type: 'error', error: err?.message ?? 'Something went wrong' })
+        } finally {
+          controller.close()
+        }
       }
     })
 
-    // 4. Save vision analysis
-    if (imageContext) {
-      await prisma.message.create({
-        data: {
-          sessionId,
-          role: 'assistant',
-          content: `🔍 [Vision Analysis]\n${imageContext}`,
-          model: VISION_MODEL
-        }
-      })
-    }
-
-    return NextResponse.json({
-      message: assistantMessage,
-      model: session.model,
-      messageId: saved.id,
-      visionUsed: !!imageBase64,
-      generatedImages: generatedImages.length > 0 ? generatedImages : null,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }
     })
 
   } catch (err: any) {
@@ -237,15 +320,9 @@ Rules:
 
 export async function PATCH(req: Request) {
   const { sessionId, model } = await req.json()
-
-  // Reset Mistral conversation ID on model switch → forces fresh conversation
   await prisma.session.update({
     where: { id: sessionId },
-    data: {
-      model,
-      mistralConversationId: null
-    }
+    data: { model, mistralConversationId: null }
   })
-
   return NextResponse.json({ success: true })
 }
