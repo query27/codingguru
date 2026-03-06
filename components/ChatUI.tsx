@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -37,139 +37,68 @@ type Session = {
   messages: Message[];
 };
 
-// Split text into sentences for fade-in effect
 function splitIntoSentences(text: string): string[] {
-  // Split on sentence endings but keep code blocks together
-  const parts: string[] = []
-  let current = ''
-  let inCodeBlock = false
-
-  const lines = text.split('\n')
+  const parts: string[] = [];
+  let current = '';
+  let inCodeBlock = false;
+  const lines = text.split('\n');
   for (const line of lines) {
     if (line.startsWith('```')) {
-      inCodeBlock = !inCodeBlock
-      current += line + '\n'
-      if (!inCodeBlock) {
-        parts.push(current.trim())
-        current = ''
-      }
-      continue
+      inCodeBlock = !inCodeBlock;
+      current += line + '\n';
+      if (!inCodeBlock) { parts.push(current.trim()); current = ''; }
+      continue;
     }
-
-    if (inCodeBlock) {
-      current += line + '\n'
-      continue
-    }
-
-    current += line + '\n'
-
-    // Sentence ending outside code block
+    if (inCodeBlock) { current += line + '\n'; continue; }
+    current += line + '\n';
     if (/[.!?]\s*$/.test(line.trim()) || line.trim() === '') {
-      if (current.trim()) {
-        parts.push(current.trim())
-        current = ''
-      }
+      if (current.trim()) { parts.push(current.trim()); current = ''; }
     }
   }
-
-  if (current.trim()) parts.push(current.trim())
-  return parts.filter(Boolean)
+  if (current.trim()) parts.push(current.trim());
+  return parts.filter(Boolean);
 }
 
 function CopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }}
-      style={{
-        background: copied ? "#00ff9d18" : "transparent",
-        border: `1px solid ${copied ? "#00ff9d44" : "#333"}`,
-        borderRadius: "5px", padding: "3px 10px",
-        color: copied ? "#00ff9d" : "#94a3b8",
-        fontSize: "11px", cursor: "pointer",
-        fontFamily: "'JetBrains Mono', monospace",
-        transition: "all 0.2s ease",
-      }}
-    >
+    <button onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      style={{ background: copied ? "#00ff9d18" : "transparent", border: `1px solid ${copied ? "#00ff9d44" : "#333"}`, borderRadius: "5px", padding: "3px 10px", color: copied ? "#00ff9d" : "#94a3b8", fontSize: "11px", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", transition: "all 0.2s ease" }}>
       {copied ? "✓ copied" : "copy"}
     </button>
   );
 }
 
-function StreamingMessage({ content, model, generatedImages, isStreaming }: {
-  content: string;
-  model: string;
-  generatedImages?: string[];
-  isStreaming?: boolean;
-}) {
+function StreamingMessage({ content, model, generatedImages, isStreaming }: { content: string; model: string; generatedImages?: string[]; isStreaming?: boolean; }) {
   const modelInfo = MODELS.find(m => m.id === model);
   const [visibleSentences, setVisibleSentences] = useState<string[]>([]);
-  const [displayedCount, setDisplayedCount] = useState(0);
   const prevContentRef = useRef('');
 
   useEffect(() => {
-    if (!isStreaming) {
-      // Done — show all at once cleanly
-      setVisibleSentences(splitIntoSentences(content));
-      setDisplayedCount(999);
-      return;
-    }
-
-    // Only process new content
+    if (!isStreaming) { setVisibleSentences(splitIntoSentences(content)); return; }
     if (content === prevContentRef.current) return;
     prevContentRef.current = content;
-
-    const sentences = splitIntoSentences(content);
-    setVisibleSentences(sentences);
-
-    // Reveal new sentences one by one
-    if (sentences.length > displayedCount) {
-      setDisplayedCount(sentences.length);
-    }
+    setVisibleSentences(splitIntoSentences(content));
   }, [content, isStreaming]);
 
   const markdownComponents = {
     a: ({ node, ...props }: any) => (
-      <a
-        style={{
-          color: "#00d4ff",
-          textDecoration: "none",
-          borderBottom: "1px solid #00d4ff44",
-          transition: "all 0.2s ease",
-          fontWeight: 500,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = "#00e8ff";
-          e.currentTarget.style.borderBottom = "1px solid #00e8ff";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = "#00d4ff";
-          e.currentTarget.style.borderBottom = "1px solid #00d4ff44";
-        }}
-        {...props}
-      />
+      <a style={{ color: "#00d4ff", textDecoration: "none", borderBottom: "1px solid #00d4ff44", transition: "all 0.2s ease", fontWeight: 500 }}
+        onMouseEnter={e => { e.currentTarget.style.color = "#00e8ff"; e.currentTarget.style.borderBottom = "1px solid #00e8ff"; }}
+        onMouseLeave={e => { e.currentTarget.style.color = "#00d4ff"; e.currentTarget.style.borderBottom = "1px solid #00d4ff44"; }}
+        {...props} />
     ),
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || "");
       const codeString = String(children).replace(/\n$/, "");
       return !inline && match ? (
         <div style={{ margin: "8px 0" }}>
-          <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "6px 12px", background: "#1a1a1a",
-            borderRadius: "8px 8px 0 0", border: "1px solid #333", borderBottom: "none",
-          }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", background: "#1a1a1a", borderRadius: "8px 8px 0 0", border: "1px solid #333", borderBottom: "none" }}>
             <span style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{match[1]}</span>
             <CopyButton code={codeString} />
           </div>
           <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div"
-            customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #333", borderTop: "none", background: "#1a1a1a" }}
-            {...props}
-          >
+            customStyle={{ borderRadius: "0 0 8px 8px", fontSize: "12.5px", margin: "0", border: "1px solid #333", borderTop: "none", background: "#1a1a1a" }} {...props}>
             {codeString}
           </SyntaxHighlighter>
         </div>
@@ -185,14 +114,8 @@ function StreamingMessage({ content, model, generatedImages, isStreaming }: {
     h2: ({ children }: any) => <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#f1f5f9", margin: "10px 0 5px" }}>{children}</h2>,
     h3: ({ children }: any) => <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", margin: "8px 0 4px" }}>{children}</h3>,
     strong: ({ children }: any) => <strong style={{ color: "#f1f5f9", fontWeight: 600 }}>{children}</strong>,
-    blockquote: ({ children }: any) => (
-      <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>
-    ),
-    table: ({ children }: any) => (
-      <div style={{ overflowX: "auto", margin: "8px 0" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table>
-      </div>
-    ),
+    blockquote: ({ children }: any) => <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>,
+    table: ({ children }: any) => <div style={{ overflowX: "auto", margin: "8px 0" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table></div>,
     th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #333", color: "#94a3b8", fontWeight: 600, background: "#333" }}>{children}</th>,
     td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #333", color: "#cbd5e1" }}>{children}</td>,
   };
@@ -200,48 +123,23 @@ function StreamingMessage({ content, model, generatedImages, isStreaming }: {
   return (
     <div>
       {isStreaming ? (
-        // Streaming mode — sentence by sentence fade in
         <div>
           {visibleSentences.map((sentence, i) => (
-            <div
-              key={i}
-              style={{
-                animation: `cgSentenceFade 0.4s ease forwards`,
-                opacity: 0,
-                animationDelay: `${Math.min(i * 0.05, 0.3)}s`,
-              }}
-            >
+            <div key={i} style={{ animation: `cgSentenceFade 0.4s ease forwards`, opacity: 0, animationDelay: `${Math.min(i * 0.05, 0.3)}s` }}>
               <ReactMarkdown components={markdownComponents}>{sentence}</ReactMarkdown>
             </div>
           ))}
-          {/* Blinking cursor */}
-          <span style={{
-            display: 'inline-block',
-            width: '2px',
-            height: '14px',
-            background: modelInfo?.color ?? '#00ff9d',
-            marginLeft: '2px',
-            verticalAlign: 'text-bottom',
-            animation: 'cgCursorBlink 0.8s ease infinite',
-          }} />
+          <span style={{ display: 'inline-block', width: '2px', height: '14px', background: modelInfo?.color ?? '#00ff9d', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'cgCursorBlink 0.8s ease infinite' }} />
         </div>
       ) : (
-        // Done — render full markdown
         <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
       )}
-
-      {/* Generated images */}
       {generatedImages && generatedImages.length > 0 && (
         <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
           {generatedImages.map((imgUrl, i) => (
             <div key={i} style={{ animation: 'cgSentenceFade 0.5s ease forwards' }}>
-              <img src={imgUrl} alt={`Generated ${i + 1}`} style={{
-                maxWidth: "100%", borderRadius: "10px",
-                border: "1px solid #ff704344", display: "block"
-              }} />
-              <div style={{ marginTop: "4px", fontSize: "9px", color: "#ff7043", fontFamily: "'JetBrains Mono', monospace" }}>
-                🎨 generated by Mistral
-              </div>
+              <img src={imgUrl} alt={`Generated ${i + 1}`} style={{ maxWidth: "100%", borderRadius: "10px", border: "1px solid #ff704344", display: "block" }} />
+              <div style={{ marginTop: "4px", fontSize: "9px", color: "#ff7043", fontFamily: "'JetBrains Mono', monospace" }}>🎨 generated by Mistral</div>
             </div>
           ))}
         </div>
@@ -253,50 +151,20 @@ function StreamingMessage({ content, model, generatedImages, isStreaming }: {
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
   const model = MODELS.find(m => m.id === msg.model);
-
   return (
-    <div style={{
-      display: "flex", flexDirection: isUser ? "row-reverse" : "row",
-      gap: "8px", padding: "4px 16px", alignItems: "flex-start",
-    }}>
-      <div style={{
-        width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-        background: isUser ? "#6366f122" : "#333",
-        border: isUser ? "1px solid #6366f133" : "1px solid #333",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "12px", marginTop: "2px"
-      }}>
+    <div style={{ display: "flex", flexDirection: isUser ? "row-reverse" : "row", gap: "8px", padding: "4px 16px", alignItems: "flex-start" }}>
+      <div style={{ width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0, background: isUser ? "#6366f122" : "#333", border: isUser ? "1px solid #6366f133" : "1px solid #333", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", marginTop: "2px" }}>
         {isUser ? "Y" : "⚡"}
       </div>
-      <div style={{
-        maxWidth: "75%", display: "flex", flexDirection: "column",
-        gap: "4px", alignItems: isUser ? "flex-end" : "flex-start"
-      }}>
-        <div style={{
-          padding: "10px 14px",
-          borderRadius: isUser ? "14px 4px 14px 14px" : "4px 14px 14px 14px",
-          background: isUser ? "#424242" : "#2a2a2a",
-          border: isUser ? "1px solid #555" : "1px solid #333",
-          color: "#e2e8f0", fontSize: "13.5px", lineHeight: "1.65",
-          fontFamily: "'Inter', sans-serif", wordBreak: "break-word",
-        }}>
+      <div style={{ maxWidth: "75%", display: "flex", flexDirection: "column", gap: "4px", alignItems: isUser ? "flex-end" : "flex-start" }}>
+        <div style={{ padding: "10px 14px", borderRadius: isUser ? "14px 4px 14px 14px" : "4px 14px 14px 14px", background: isUser ? "#424242" : "#2a2a2a", border: isUser ? "1px solid #555" : "1px solid #333", color: "#e2e8f0", fontSize: "13.5px", lineHeight: "1.65", fontFamily: "'Inter', sans-serif", wordBreak: "break-word" }}>
           {isUser && msg.imagePreview && (
-            <img src={msg.imagePreview} alt="attached" style={{
-              maxWidth: "200px", maxHeight: "200px", borderRadius: "8px",
-              marginBottom: "6px", display: "block", border: "1px solid #333"
-            }} />
+            <img src={msg.imagePreview} alt="attached" style={{ maxWidth: "200px", maxHeight: "200px", borderRadius: "8px", marginBottom: "6px", display: "block", border: "1px solid #333" }} />
           )}
           {isUser ? (
-            <span style={{ whiteSpace: "pre-wrap" }}>
-              {msg.content.replace("📎 [Image attached]\n", "")}
-            </span>
+            <span style={{ whiteSpace: "pre-wrap" }}>{msg.content.replace("📎 [Image attached]\n", "")}</span>
           ) : (
-            <StreamingMessage
-              content={msg.content}
-              model={msg.model}
-              generatedImages={msg.generatedImages}
-              isStreaming={msg.isStreaming}
-            />
+            <StreamingMessage content={msg.content} model={msg.model} generatedImages={msg.generatedImages} isStreaming={msg.isStreaming} />
           )}
         </div>
         {!isUser && model && (
@@ -319,9 +187,7 @@ function TypingDots({ modelLabel, modelColor }: { modelLabel: string; modelColor
             <div key={i} style={{ width: "5px", height: "5px", borderRadius: "50%", background: modelColor, animation: `cgBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
           ))}
         </div>
-        <span style={{ fontSize: "9px", color: modelColor, fontFamily: "'JetBrains Mono', monospace", opacity: 0.6 }}>
-          {modelLabel} · thinking...
-        </span>
+        <span style={{ fontSize: "9px", color: modelColor, fontFamily: "'JetBrains Mono', monospace", opacity: 0.6 }}>{modelLabel} · thinking...</span>
       </div>
     </div>
   );
@@ -343,20 +209,15 @@ export default function CodingGuru() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const activeMessages = activeSession?.messages ?? [];
   const activeModel = MODELS.find(m => m.id === activeSession?.model);
 
   useEffect(() => { fetchSessions(); }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages, isTyping, streamingMsgId]);
-
-  useEffect(() => {
-    if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
-  }, [activeSessionId]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages, isTyping, streamingMsgId]);
+  useEffect(() => { if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100); }, [activeSessionId]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -371,10 +232,7 @@ export default function CodingGuru() {
           const preview = URL.createObjectURL(file);
           setSelectedImagePreview(preview);
           const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = (reader.result as string).split(",")[1];
-            setSelectedImage(base64);
-          };
+          reader.onload = () => { const base64 = (reader.result as string).split(",")[1]; setSelectedImage(base64); };
           reader.readAsDataURL(file);
           break;
         }
@@ -391,45 +249,27 @@ export default function CodingGuru() {
       const data = await res.json();
       setSessions(data);
       if (data.length > 0) setActiveSessionId(data[0].id);
-    } catch {
-      setError("Failed to load sessions");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Failed to load sessions"); }
+    finally { setLoading(false); }
   }
 
   async function handleCreateSession() {
-    const savedModel = localStorage.getItem('cg-default-model') ?? 'mistral-large-2512'
+    const savedModel = localStorage.getItem('cg-default-model') ?? 'mistral-large-2512';
     try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New Chat", model: savedModel })
-      });
+      const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "New Chat", model: savedModel }) });
       const session = await res.json();
       setSessions(prev => [{ ...session, messages: [], pinned: false }, ...prev]);
       setActiveSessionId(session.id);
-    } catch {
-      setError("Failed to create session");
-    }
+    } catch { setError("Failed to create session"); }
   }
 
   async function handleDeleteSession(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation();
     try {
-      await fetch("/api/sessions", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId })
-      });
+      await fetch("/api/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
       setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (activeSessionId === sessionId) {
-        const remaining = sessions.filter(s => s.id !== sessionId);
-        setActiveSessionId(remaining[0]?.id ?? null);
-      }
-    } catch {
-      setError("Failed to delete session");
-    }
+      if (activeSessionId === sessionId) { const remaining = sessions.filter(s => s.id !== sessionId); setActiveSessionId(remaining[0]?.id ?? null); }
+    } catch { setError("Failed to delete session"); }
   }
 
   async function handlePinSession(sessionId: string, e: React.MouseEvent) {
@@ -438,21 +278,12 @@ export default function CodingGuru() {
     if (!session) return;
     const newPinned = !session.pinned;
     try {
-      await fetch("/api/sessions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, pinned: newPinned })
-      });
+      await fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, pinned: newPinned }) });
       setSessions(prev => {
         const updated = prev.map(s => s.id === sessionId ? { ...s, pinned: newPinned } : s);
-        return [
-          ...updated.filter(s => s.pinned),
-          ...updated.filter(s => !s.pinned)
-        ];
+        return [...updated.filter(s => s.pinned), ...updated.filter(s => !s.pinned)];
       });
-    } catch {
-      setError("Failed to pin session");
-    }
+    } catch { setError("Failed to pin session"); }
   }
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -462,22 +293,34 @@ export default function CodingGuru() {
     const preview = URL.createObjectURL(file);
     setSelectedImagePreview(preview);
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setSelectedImage(base64);
-    };
+    reader.onload = () => { const base64 = (reader.result as string).split(",")[1]; setSelectedImage(base64); };
     reader.readAsDataURL(file);
     e.target.value = "";
+  }
+
+  function handleStop() {
+    abortControllerRef.current?.abort();
+    setIsTyping(false);
+    if (streamingMsgId) {
+      // Keep whatever was streamed, just mark as done
+      setSessions(prev => prev.map(s =>
+        s.id === activeSessionId ? {
+          ...s,
+          messages: s.messages.map(m =>
+            m.id === streamingMsgId ? { ...m, isStreaming: false, content: m.content || '_(stopped)_' } : m
+          )
+        } : s
+      ));
+      setStreamingMsgId(null);
+    }
+    inputRef.current?.focus();
   }
 
   async function handleSend() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
 
-    if (inputRef.current) {
-      inputRef.current.value = "";
-      inputRef.current.style.height = "auto";
-    }
+    if (inputRef.current) { inputRef.current.value = ""; inputRef.current.style.height = "auto"; }
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
@@ -490,7 +333,6 @@ export default function CodingGuru() {
 
     const currentSessionId = activeSessionId;
 
-    // Add user message
     const tempUserMsg: Message = {
       id: `temp-user-${Date.now()}`,
       role: "user",
@@ -504,17 +346,12 @@ export default function CodingGuru() {
       s.id === currentSessionId ? { ...s, messages: [...s.messages, tempUserMsg] } : s
     ));
 
-    // Add streaming placeholder message
     const streamingId = `streaming-${Date.now()}`;
     setStreamingMsgId(streamingId);
 
     const streamingMsg: Message = {
-      id: streamingId,
-      role: "assistant",
-      content: "",
-      model: activeSession!.model,
-      createdAt: new Date().toISOString(),
-      isStreaming: true,
+      id: streamingId, role: "assistant", content: "",
+      model: activeSession!.model, createdAt: new Date().toISOString(), isStreaming: true,
     };
 
     setSessions(prev => prev.map(s =>
@@ -522,9 +359,13 @@ export default function CodingGuru() {
     ));
 
     try {
+      // Create new abort controller for this request
+      abortControllerRef.current = new AbortController();
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           sessionId: currentSessionId,
           content: content || "What do you see in this image?",
@@ -557,7 +398,6 @@ export default function CodingGuru() {
 
             if (event.type === 'chunk') {
               accumulatedContent += event.content;
-              // Update streaming message content
               setSessions(prev => prev.map(s =>
                 s.id === currentSessionId ? {
                   ...s,
@@ -569,12 +409,9 @@ export default function CodingGuru() {
               messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }
 
-            if (event.type === 'images') {
-              finalImages = event.images;
-            }
+            if (event.type === 'images') { finalImages = event.images; }
 
             if (event.type === 'done') {
-              // Replace streaming msg with final saved msg
               setSessions(prev => prev.map(s =>
                 s.id === currentSessionId ? {
                   ...s,
@@ -593,44 +430,39 @@ export default function CodingGuru() {
               setStreamingMsgId(null);
             }
 
-            if (event.type === 'error') {
-              throw new Error(event.error);
-            }
-          } catch (parseErr) {
-            // Skip malformed SSE lines
-          }
+            if (event.type === 'error') throw new Error(event.error);
+          } catch (parseErr) { /* skip malformed lines */ }
         }
       }
 
-      // Autoname session on first message
+      // Autoname on first message
       const currentSession = sessions.find(s => s.id === currentSessionId);
       if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
-        fetch("/api/sessions/autonaming", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: content || "Image attached" })
-        })
+        fetch("/api/sessions/autonaming", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: content || "Image attached" }) })
           .then(res => res.json())
           .then(({ name }) => {
-            fetch("/api/sessions", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId: currentSessionId, name })
-            }).then(() => {
-              setSessions(prev => prev.map(s =>
-                s.id === currentSessionId ? { ...s, name } : s
-              ));
-            });
-          })
-          .catch(() => {});
+            fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: currentSessionId, name }) })
+              .then(() => setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, name } : s)));
+          }).catch(() => {});
       }
 
     } catch (err: any) {
+      // User stopped — keep streamed content
+      if (err.name === 'AbortError') {
+        setSessions(prev => prev.map(s =>
+          s.id === currentSessionId ? {
+            ...s,
+            messages: s.messages.map(m =>
+              m.id === streamingId ? { ...m, isStreaming: false, content: m.content || '_(stopped)_' } : m
+            )
+          } : s
+        ));
+        setStreamingMsgId(null);
+        return;
+      }
       setError(err.message ?? "Something went wrong");
-      // Remove streaming placeholder
       setSessions(prev => prev.map(s =>
-        s.id === currentSessionId
-          ? { ...s, messages: s.messages.filter(m => m.id !== streamingId) } : s
+        s.id === currentSessionId ? { ...s, messages: s.messages.filter(m => m.id !== streamingId) } : s
       ));
       setStreamingMsgId(null);
     } finally {
@@ -644,17 +476,9 @@ export default function CodingGuru() {
     setShowModelPicker(false);
     localStorage.setItem('cg-default-model', modelId);
     try {
-      await fetch("/api/chat", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId, model: modelId })
-      });
-      setSessions(prev => prev.map(s =>
-        s.id === activeSessionId ? { ...s, model: modelId } : s
-      ));
-    } catch {
-      setError("Failed to switch model");
-    }
+      await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: activeSessionId, model: modelId }) });
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, model: modelId } : s));
+    } catch { setError("Failed to switch model"); }
   }
 
   return (
@@ -663,23 +487,12 @@ export default function CodingGuru() {
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; overflow: hidden; background: #212121; }
-        @keyframes cgBounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
-          40% { transform: translateY(-5px); opacity: 1; }
-        }
-        @keyframes cgFade {
-          from { opacity: 0; transform: translateY(6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes cgSentenceFade {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes cgCursorBlink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
+        @keyframes cgBounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.3; } 40% { transform: translateY(-5px); opacity: 1; } }
+        @keyframes cgFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes cgSentenceFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes cgCursorBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes cgStopPulse { 0%, 100% { box-shadow: 0 0 0 0 #ef444433; } 50% { box-shadow: 0 0 0 4px #ef444411; } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover .cg-pin { opacity: 1 !important; }
         .cg-session:hover { background: #2a2a2a !important; }
@@ -687,6 +500,7 @@ export default function CodingGuru() {
         .cg-session.pinned { border-color: #00ff9d18 !important; }
         .cg-model-opt:hover { background: #333 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
+        .cg-stop:hover { background: #ef444430 !important; border-color: #ef4444 !important; }
         .cg-new:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
         .cg-attach:hover { border-color: #00ff9d66 !important; color: #00ff9d !important; }
         ::-webkit-scrollbar { width: 3px; }
@@ -697,8 +511,6 @@ export default function CodingGuru() {
 
         {/* SIDEBAR */}
         <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#2a2a2a", borderRight: "1px solid #333", display: "flex", flexDirection: "column" }}>
-
-          {/* Logo */}
           <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #00ff9d, #00c4f0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", boxShadow: "0 0 16px #00ff9d33", flexShrink: 0 }}>⚡</div>
             <div>
@@ -707,19 +519,12 @@ export default function CodingGuru() {
             </div>
           </div>
 
-          {/* New Chat */}
           <div style={{ padding: "12px 10px 6px" }}>
-            <button className="cg-new" onClick={handleCreateSession} style={{
-              width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #333",
-              background: "transparent", color: "#94a3b8", fontSize: "12px", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-              transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif"
-            }}>
+            <button className="cg-new" onClick={handleCreateSession} style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #333", background: "transparent", color: "#94a3b8", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif" }}>
               <span>+</span> New Chat
             </button>
           </div>
 
-          {/* Sessions list */}
           <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
             {loading ? (
               <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>Loading...</div>
@@ -727,9 +532,7 @@ export default function CodingGuru() {
               <div style={{ padding: "20px 12px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>No sessions yet</div>
             ) : (
               <>
-                {sessions.some(s => s.pinned) && (
-                  <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>
-                )}
+                {sessions.some(s => s.pinned) && <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>}
                 {sessions.map((session, index) => {
                   const model = MODELS.find(m => m.id === session.model);
                   const isActive = session.id === activeSessionId;
@@ -737,14 +540,9 @@ export default function CodingGuru() {
                   const showChatsLabel = !session.pinned && prevSession?.pinned;
                   return (
                     <div key={session.id}>
-                      {showChatsLabel && sessions.some(s => s.pinned) && (
-                        <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>
-                      )}
-                      <div
-                        className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`}
-                        onClick={() => setActiveSessionId(session.id)}
-                        style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}
-                      >
+                      {showChatsLabel && sessions.some(s => s.pinned) && <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>}
+                      <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`} onClick={() => setActiveSessionId(session.id)}
+                        style={{ padding: "9px 10px", borderRadius: "8px", border: "1px solid transparent", cursor: "pointer", marginBottom: "2px", transition: "all 0.15s ease", position: "relative", animation: "cgFade 0.3s ease" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#e2e8f0" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
@@ -770,7 +568,6 @@ export default function CodingGuru() {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: "10px 14px", borderTop: "1px solid #333", display: "flex", alignItems: "center", gap: "6px" }}>
             <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: "cgPulse 2s infinite", boxShadow: "0 0 5px #00ff9d", flexShrink: 0 }} />
             <span style={{ fontSize: "9px", color: "#1e3a2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>GROQCLOUD · MISTRAL CONNECTED</span>
@@ -803,7 +600,6 @@ export default function CodingGuru() {
                   {activeModel?.label ?? "Select Model"}
                   <span style={{ opacity: 0.5, fontSize: "9px" }}>▼</span>
                 </button>
-
                 {showModelPicker && (
                   <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#2a2a2a", border: "1px solid #333", borderRadius: "10px", overflow: "hidden", boxShadow: "0 16px 48px #00000088", zIndex: 100, minWidth: "220px", animation: "cgFade 0.15s ease" }}>
                     <div style={{ padding: "8px 12px 6px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1.2px", borderBottom: "1px solid #333" }}>SWITCH MODEL</div>
@@ -825,9 +621,7 @@ export default function CodingGuru() {
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
             onClick={() => showModelPicker && setShowModelPicker(false)}>
             {!activeSession ? (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "13px" }}>
-                Create or select a session to start
-              </div>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "13px" }}>Create or select a session to start</div>
             ) : activeMessages.length === 0 && !isTyping ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "40px 20px", animation: "cgFade 0.4s ease" }}>
                 <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#00ff9d0a", border: "1px solid #00ff9d18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚡</div>
@@ -843,7 +637,6 @@ export default function CodingGuru() {
                     <MessageBubble msg={msg} />
                   </div>
                 ))}
-                {/* Show typing dots only before first chunk arrives */}
                 {isTyping && !streamingMsgId && activeModel && (
                   <TypingDots modelLabel={activeModel.label} modelColor={activeModel.color} />
                 )}
@@ -870,7 +663,7 @@ export default function CodingGuru() {
               </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#2a2a2a", border: "1px solid #333", borderRadius: "12px", padding: "8px 8px 8px 14px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#2a2a2a", border: `1px solid ${isTyping ? "#ef444433" : "#333"}`, borderRadius: "12px", padding: "8px 8px 8px 14px", transition: "border-color 0.3s ease" }}>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
 
               <button className="cg-attach" onClick={() => fileInputRef.current?.click()} disabled={!activeSession}
@@ -882,21 +675,24 @@ export default function CodingGuru() {
                 ref={inputRef}
                 disabled={!activeSession || isTyping}
                 onChange={e => setInputHasText(e.target.value.trim().length > 0)}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                }}
-                onInput={(e: any) => {
-                  e.target.style.height = "auto";
-                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                onInput={(e: any) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
                 placeholder={activeSession ? (isTyping ? `${activeModel?.label} is generating...` : "Ask anything... or paste image with Ctrl+V") : "Select a session first"}
                 rows={1}
                 style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif", lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d", outline: "none", overflowY: "auto" }}
               />
 
-              <button className="cg-send" onClick={handleSend}
-                disabled={(!inputHasText && !selectedImage) || isTyping || !activeSession}
-                style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && !isTyping && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && !isTyping && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) && !isTyping ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && !isTyping && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
+              {/* Stop button when generating, send button otherwise */}
+              {isTyping ? (
+                <button className="cg-stop" onClick={handleStop}
+                  style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: "#ef444418", border: "1px solid #ef444444", color: "#ef4444", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease", animation: "cgStopPulse 2s ease infinite" }}>
+                  ■
+                </button>
+              ) : (
+                <button className="cg-send" onClick={handleSend}
+                  disabled={(!inputHasText && !selectedImage) || !activeSession}
+                  style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
+              )}
             </div>
           </div>
         </div>
