@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -35,6 +35,9 @@ type Session = {
   pinned: boolean;
   createdAt: string;
   messages: Message[];
+  hasMore?: boolean;       // more older messages to load
+  totalMessages?: number;  // total count
+  messagesLoaded?: boolean; // whether initial load happened
 };
 
 function splitIntoSentences(text: string): string[] {
@@ -200,6 +203,8 @@ export default function CodingGuru() {
   const [isTyping, setIsTyping] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageMime, setSelectedImageMime] = useState<string>("image/png");
@@ -207,6 +212,8 @@ export default function CodingGuru() {
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesTopRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -216,8 +223,39 @@ export default function CodingGuru() {
   const activeModel = MODELS.find(m => m.id === activeSession?.model);
 
   useEffect(() => { fetchSessions(); }, []);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages, isTyping, streamingMsgId]);
-  useEffect(() => { if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100); }, [activeSessionId]);
+
+  // Auto-scroll for typing/streaming
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setShowScrollButton(false);
+  }, [isTyping, streamingMsgId]);
+  
+  // Auto-scroll for initial load
+  useEffect(() => {
+    if (activeSession?.messagesLoaded) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      setShowScrollButton(false);
+    }
+  }, [activeSession?.messagesLoaded]);
+
+  useEffect(() => {
+    if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
+  }, [activeSessionId]);
+
+  // Load messages when switching session
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const session = sessions.find(s => s.id === activeSessionId);
+    if (!session || session.messagesLoaded) return;
+    loadMessages(activeSessionId);
+  }, [activeSessionId]);
+
+  // Scroll to bottom when messages first load
+  useEffect(() => {
+    if (activeSession?.messagesLoaded) {
+      // messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+  }, [activeSession?.messagesLoaded]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -247,10 +285,78 @@ export default function CodingGuru() {
       setLoading(true);
       const res = await fetch("/api/sessions");
       const data = await res.json();
-      setSessions(data);
+      // Sessions have no messages yet — lazy loaded on click
+      setSessions(data.map((s: any) => ({ ...s, messages: [], messagesLoaded: false, hasMore: false })));
       if (data.length > 0) setActiveSessionId(data[0].id);
     } catch { setError("Failed to load sessions"); }
     finally { setLoading(false); }
+  }
+
+  async function loadMessages(sessionId: string) {
+    setLoadingMessages(true);
+    try {
+      const res = await fetch(`/api/messages?sessionId=${sessionId}`);
+      const data = await res.json();
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId ? {
+          ...s,
+          messages: data.messages,
+          hasMore: data.hasMore,
+          totalMessages: data.total,
+          messagesLoaded: true,
+        } : s
+      ));
+    } catch { setError("Failed to load messages"); }
+    finally { setLoadingMessages(false); }
+  }
+
+  async function loadOlderMessages(sessionId: string) {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session || !session.hasMore || loadingOlder) return;
+
+    const oldestMsg = session.messages[0];
+    if (!oldestMsg) return;
+
+    setLoadingOlder(true);
+
+    // Save scroll position before prepending
+    const container = messagesContainerRef.current;
+    const scrollHeightBefore = container?.scrollHeight ?? 0;
+
+    try {
+      const res = await fetch(`/api/messages?sessionId=${sessionId}&cursor=${oldestMsg.id}`);
+      const data = await res.json();
+
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId ? {
+          ...s,
+          messages: [...data.messages, ...s.messages],
+          hasMore: data.hasMore,
+        } : s
+      ));
+
+      // Restore scroll position so user stays at same place
+      requestAnimationFrame(() => {
+        if (container) {
+          const scrollHeightAfter = container.scrollHeight;
+          container.scrollTop = scrollHeightAfter - scrollHeightBefore;
+        }
+      });
+    } catch { setError("Failed to load older messages"); }
+    finally { setLoadingOlder(false); }
+  }
+
+const [showScrollButton, setShowScrollButton] = useState(false);
+  // Detect scroll to top → load older messages
+  function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const isScrolledUp = el.scrollTop < el.scrollHeight - el.clientHeight - 100; // 100px threshold
+  
+    setShowScrollButton(isScrolledUp); // Show button if scrolled up
+  
+    if (el.scrollTop < 80 && activeSessionId && activeSession?.hasMore && !loadingOlder) {
+      loadOlderMessages(activeSessionId);
+    }
   }
 
   async function handleCreateSession() {
@@ -258,7 +364,7 @@ export default function CodingGuru() {
     try {
       const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "New Chat", model: savedModel }) });
       const session = await res.json();
-      setSessions(prev => [{ ...session, messages: [], pinned: false }, ...prev]);
+      setSessions(prev => [{ ...session, messages: [], pinned: false, messagesLoaded: true, hasMore: false }, ...prev]);
       setActiveSessionId(session.id);
     } catch { setError("Failed to create session"); }
   }
@@ -302,7 +408,6 @@ export default function CodingGuru() {
     abortControllerRef.current?.abort();
     setIsTyping(false);
     if (streamingMsgId) {
-      // Keep whatever was streamed, just mark as done
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId ? {
           ...s,
@@ -358,8 +463,10 @@ export default function CodingGuru() {
       s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
     ));
 
+    // Scroll to bottom for new message
+    // setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
     try {
-      // Create new abort controller for this request
       abortControllerRef.current = new AbortController();
 
       const res = await fetch("/api/chat", {
@@ -447,7 +554,6 @@ export default function CodingGuru() {
       }
 
     } catch (err: any) {
-      // User stopped — keep streamed content
       if (err.name === 'AbortError') {
         setSessions(prev => prev.map(s =>
           s.id === currentSessionId ? {
@@ -467,7 +573,7 @@ export default function CodingGuru() {
       setStreamingMsgId(null);
     } finally {
       setIsTyping(false);
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 0); // <-- This is the key fix
     }
   }
 
@@ -493,6 +599,7 @@ export default function CodingGuru() {
         @keyframes cgCursorBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @keyframes cgPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes cgStopPulse { 0%, 100% { box-shadow: 0 0 0 0 #ef444433; } 50% { box-shadow: 0 0 0 4px #ef444411; } }
+        @keyframes cgSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover .cg-pin { opacity: 1 !important; }
         .cg-session:hover { background: #2f2f2f !important; }
@@ -534,7 +641,6 @@ export default function CodingGuru() {
               <>
                 {sessions.some(s => s.pinned) && <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>}
                 {sessions.map((session, index) => {
-                  const model = MODELS.find(m => m.id === session.model);
                   const isActive = session.id === activeSessionId;
                   const prevSession = sessions[index - 1];
                   const showChatsLabel = !session.pinned && prevSession?.pinned;
@@ -542,7 +648,7 @@ export default function CodingGuru() {
                     <div key={session.id}>
                       {showChatsLabel && sessions.some(s => s.pinned) && <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>}
                       <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`} onClick={() => setActiveSessionId(session.id)}
-                        style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "pointer", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", animation: "none", background: "#242424" }}>
+                        style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "pointer", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", background: "#242424" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#00ff9d" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
@@ -586,7 +692,7 @@ export default function CodingGuru() {
                   {activeSession.name}
                 </div>
                 <div style={{ fontSize: "10px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {activeMessages.length} messages · 👁 vision via Llama-4-Maverick
+                  {activeSession.totalMessages ?? activeMessages.length} messages · 👁 vision via Llama-4-Maverick
                 </div>
               </div>
             ) : (
@@ -618,10 +724,19 @@ export default function CodingGuru() {
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
-            onClick={() => showModelPicker && setShowModelPicker(false)}>
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
+            onClick={() => showModelPicker && setShowModelPicker(false)}
+          >
             {!activeSession ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "13px" }}>Create or select a session to start</div>
+            ) : loadingMessages ? (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                <div style={{ width: "20px", height: "20px", border: "2px solid #333", borderTop: "2px solid #00ff9d", borderRadius: "50%", animation: "cgSpin 0.8s linear infinite" }} />
+                <span style={{ fontSize: "11px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>loading messages...</span>
+              </div>
             ) : activeMessages.length === 0 && !isTyping ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "40px 20px", animation: "cgFade 0.4s ease" }}>
                 <div style={{ width: "44px", height: "44px", borderRadius: "12px", background: "#00ff9d0a", border: "1px solid #00ff9d18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>⚡</div>
@@ -632,8 +747,27 @@ export default function CodingGuru() {
               </div>
             ) : (
               <>
+                {/* Load older messages indicator */}
+                {activeSession.hasMore && (
+                  <div style={{ display: "flex", justifyContent: "center", padding: "8px", flexShrink: 0 }}>
+                    {loadingOlder ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ width: "12px", height: "12px", border: "1.5px solid #333", borderTop: "1.5px solid #00ff9d", borderRadius: "50%", animation: "cgSpin 0.8s linear infinite" }} />
+                        loading older...
+                      </div>
+                    ) : (
+                      <button onClick={() => activeSessionId && loadOlderMessages(activeSessionId)}
+                        style={{ fontSize: "11px", color: "#64748b", background: "#2a2a2a", border: "1px solid #333", borderRadius: "6px", padding: "4px 12px", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
+                        ↑ load older messages
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div ref={messagesTopRef} />
+
                 {activeMessages.map(msg => (
-                  <div key={msg.id} style={{ animation: "cgFade 0.2s ease" }}>
+                  <div key={msg.id}>
                     <MessageBubble msg={msg} />
                   </div>
                 ))}
@@ -643,6 +777,36 @@ export default function CodingGuru() {
               </>
             )}
             <div ref={messagesEndRef} />
+            {showScrollButton && (
+              <button
+                onClick={() => {
+                  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                  setShowScrollButton(false); // Hide button after clicking
+                  inputRef.current?.focus(); // Focus input after scrolling
+                }}
+                style={{
+                  position: "fixed",
+                  bottom: "100px",
+                  right: "30px",
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "50%",
+                  background: "#00ff9d",
+                  border: "none",
+                  color: "#080c14",
+                  fontSize: "16px",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px #00000044",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 100,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                ↓
+              </button>
+            )}
           </div>
 
           {/* Error */}
@@ -682,7 +846,6 @@ export default function CodingGuru() {
                 style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif", lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d", outline: "none", overflowY: "auto" }}
               />
 
-              {/* Stop button when generating, send button otherwise */}
               {isTyping ? (
                 <button className="cg-stop" onClick={handleStop}
                   style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: "#ef444418", border: "1px solid #ef444444", color: "#ef4444", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease", animation: "cgStopPulse 2s ease infinite" }}>

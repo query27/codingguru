@@ -2,14 +2,12 @@ import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
+  // No messages included — loaded lazily per session click
   const sessions = await prisma.session.findMany({
     orderBy: [
       { pinned: 'desc' },
       { createdAt: 'desc' }
-    ],
-    include: {
-      messages: { orderBy: { createdAt: 'asc' } }
-    }
+    ]
   })
   return NextResponse.json(sessions)
 }
@@ -17,7 +15,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const { name, model } = await req.json()
   const session = await prisma.session.create({
-    data: { name, model: model ?? 'openai/gpt-oss-120b' }
+    data: { name, model: model ?? 'mistral-large-latest' }
   })
   return NextResponse.json(session)
 }
