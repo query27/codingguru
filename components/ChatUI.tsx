@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -35,17 +36,20 @@ type Session = {
   pinned: boolean;
   createdAt: string;
   messages: Message[];
-  hasMore?: boolean;       // more older messages to load
-  totalMessages?: number;  // total count
-  messagesLoaded?: boolean; // whether initial load happened
+  hasMore?: boolean;
+  totalMessages?: number;
+  messagesLoaded?: boolean;
 };
 
 function splitIntoSentences(text: string): string[] {
   const parts: string[] = [];
   let current = '';
   let inCodeBlock = false;
+  let inTable = false;
   const lines = text.split('\n');
+
   for (const line of lines) {
+    // Code block toggle
     if (line.startsWith('```')) {
       inCodeBlock = !inCodeBlock;
       current += line + '\n';
@@ -53,11 +57,26 @@ function splitIntoSentences(text: string): string[] {
       continue;
     }
     if (inCodeBlock) { current += line + '\n'; continue; }
+
+    // Table rows — keep grouped, never split mid-table
+    if (line.startsWith('|')) {
+      inTable = true;
+      current += line + '\n';
+      continue;
+    }
+
+    // Flush table when we hit a non-pipe line
+    if (inTable) {
+      inTable = false;
+      if (current.trim()) { parts.push(current.trim()); current = ''; }
+    }
+
     current += line + '\n';
     if (/[.!?]\s*$/.test(line.trim()) || line.trim() === '') {
       if (current.trim()) { parts.push(current.trim()); current = ''; }
     }
   }
+
   if (current.trim()) parts.push(current.trim());
   return parts.filter(Boolean);
 }
@@ -65,14 +84,20 @@ function splitIntoSentences(text: string): string[] {
 function CopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+    <button
+      onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
       style={{ background: copied ? "#00ff9d18" : "transparent", border: `1px solid ${copied ? "#00ff9d44" : "#333"}`, borderRadius: "5px", padding: "3px 10px", color: copied ? "#00ff9d" : "#94a3b8", fontSize: "11px", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", transition: "all 0.2s ease" }}>
       {copied ? "✓ copied" : "copy"}
     </button>
   );
 }
 
-function StreamingMessage({ content, model, generatedImages, isStreaming }: { content: string; model: string; generatedImages?: string[]; isStreaming?: boolean; }) {
+function StreamingMessage({ content, model, generatedImages, isStreaming }: {
+  content: string;
+  model: string;
+  generatedImages?: string[];
+  isStreaming?: boolean;
+}) {
   const modelInfo = MODELS.find(m => m.id === model);
   const [visibleSentences, setVisibleSentences] = useState<string[]>([]);
   const prevContentRef = useRef('');
@@ -118,9 +143,22 @@ function StreamingMessage({ content, model, generatedImages, isStreaming }: { co
     h3: ({ children }: any) => <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", margin: "8px 0 4px" }}>{children}</h3>,
     strong: ({ children }: any) => <strong style={{ color: "#f1f5f9", fontWeight: 600 }}>{children}</strong>,
     blockquote: ({ children }: any) => <blockquote style={{ borderLeft: "3px solid #00ff9d44", paddingLeft: "12px", margin: "8px 0", color: "#64748b", fontStyle: "italic" }}>{children}</blockquote>,
-    table: ({ children }: any) => <div style={{ overflowX: "auto", margin: "8px 0" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table></div>,
-    th: ({ children }: any) => <th style={{ padding: "6px 12px", textAlign: "left", borderBottom: "1px solid #333", color: "#94a3b8", fontWeight: 600, background: "#333" }}>{children}</th>,
-    td: ({ children }: any) => <td style={{ padding: "6px 12px", borderBottom: "1px solid #333", color: "#cbd5e1" }}>{children}</td>,
+    table: ({ children }: any) => (
+      <div style={{ overflowX: "auto", margin: "10px 0", borderRadius: "8px", border: "1px solid #333" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "12.5px" }}>{children}</table>
+      </div>
+    ),
+    thead: ({ children }: any) => <thead style={{ background: "#1a1a1a" }}>{children}</thead>,
+    tbody: ({ children }: any) => <tbody>{children}</tbody>,
+    tr: ({ children }: any) => (
+      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.15)", transition: "background 0.1s" }}
+        onMouseEnter={e => (e.currentTarget.style.background = "#333")}
+        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+        {children}
+      </tr>
+    ),
+    th: ({ children }: any) => <th style={{ padding: "8px 14px", textAlign: "left", color: "#94a3b8", fontWeight: 600, fontSize: "11px", letterSpacing: "0.5px", whiteSpace: "nowrap", borderBottom: "2px solid rgba(255,255,255,0.3)", borderRight: "1px solid rgba(255,255,255,0.15)" }}>{children}</th>,
+    td: ({ children }: any) => <td style={{ padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,0.15)", borderRight: "1px solid rgba(255,255,255,0.15)", color: "#cbd5e1", verticalAlign: "top" }}>{children}</td>,
   };
 
   return (
@@ -129,13 +167,13 @@ function StreamingMessage({ content, model, generatedImages, isStreaming }: { co
         <div>
           {visibleSentences.map((sentence, i) => (
             <div key={i} style={{ animation: `cgSentenceFade 0.4s ease forwards`, opacity: 0, animationDelay: `${Math.min(i * 0.05, 0.3)}s` }}>
-              <ReactMarkdown components={markdownComponents}>{sentence}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{sentence}</ReactMarkdown>
             </div>
           ))}
           <span style={{ display: 'inline-block', width: '2px', height: '14px', background: modelInfo?.color ?? '#00ff9d', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'cgCursorBlink 0.8s ease infinite' }} />
         </div>
       ) : (
-        <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{content}</ReactMarkdown>
       )}
       {generatedImages && generatedImages.length > 0 && (
         <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -210,6 +248,7 @@ export default function CodingGuru() {
   const [selectedImageMime, setSelectedImageMime] = useState<string>("image/png");
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesTopRef = useRef<HTMLDivElement>(null);
@@ -224,13 +263,11 @@ export default function CodingGuru() {
 
   useEffect(() => { fetchSessions(); }, []);
 
-  // Auto-scroll for typing/streaming
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setShowScrollButton(false);
   }, [isTyping, streamingMsgId]);
-  
-  // Auto-scroll for initial load
+
   useEffect(() => {
     if (activeSession?.messagesLoaded) {
       messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
@@ -242,20 +279,12 @@ export default function CodingGuru() {
     if (activeSessionId) setTimeout(() => inputRef.current?.focus(), 100);
   }, [activeSessionId]);
 
-  // Load messages when switching session
   useEffect(() => {
     if (!activeSessionId) return;
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session || session.messagesLoaded) return;
     loadMessages(activeSessionId);
   }, [activeSessionId]);
-
-  // Scroll to bottom when messages first load
-  useEffect(() => {
-    if (activeSession?.messagesLoaded) {
-      // messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-    }
-  }, [activeSession?.messagesLoaded]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -285,7 +314,6 @@ export default function CodingGuru() {
       setLoading(true);
       const res = await fetch("/api/sessions");
       const data = await res.json();
-      // Sessions have no messages yet — lazy loaded on click
       setSessions(data.map((s: any) => ({ ...s, messages: [], messagesLoaded: false, hasMore: false })));
       if (data.length > 0) setActiveSessionId(data[0].id);
     } catch { setError("Failed to load sessions"); }
@@ -298,13 +326,7 @@ export default function CodingGuru() {
       const res = await fetch(`/api/messages?sessionId=${sessionId}`);
       const data = await res.json();
       setSessions(prev => prev.map(s =>
-        s.id === sessionId ? {
-          ...s,
-          messages: data.messages,
-          hasMore: data.hasMore,
-          totalMessages: data.total,
-          messagesLoaded: true,
-        } : s
+        s.id === sessionId ? { ...s, messages: data.messages, hasMore: data.hasMore, totalMessages: data.total, messagesLoaded: true } : s
       ));
     } catch { setError("Failed to load messages"); }
     finally { setLoadingMessages(false); }
@@ -313,29 +335,17 @@ export default function CodingGuru() {
   async function loadOlderMessages(sessionId: string) {
     const session = sessions.find(s => s.id === sessionId);
     if (!session || !session.hasMore || loadingOlder) return;
-
     const oldestMsg = session.messages[0];
     if (!oldestMsg) return;
-
     setLoadingOlder(true);
-
-    // Save scroll position before prepending
     const container = messagesContainerRef.current;
     const scrollHeightBefore = container?.scrollHeight ?? 0;
-
     try {
       const res = await fetch(`/api/messages?sessionId=${sessionId}&cursor=${oldestMsg.id}`);
       const data = await res.json();
-
       setSessions(prev => prev.map(s =>
-        s.id === sessionId ? {
-          ...s,
-          messages: [...data.messages, ...s.messages],
-          hasMore: data.hasMore,
-        } : s
+        s.id === sessionId ? { ...s, messages: [...data.messages, ...s.messages], hasMore: data.hasMore } : s
       ));
-
-      // Restore scroll position so user stays at same place
       requestAnimationFrame(() => {
         if (container) {
           const scrollHeightAfter = container.scrollHeight;
@@ -346,14 +356,10 @@ export default function CodingGuru() {
     finally { setLoadingOlder(false); }
   }
 
-const [showScrollButton, setShowScrollButton] = useState(false);
-  // Detect scroll to top → load older messages
   function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
-    const isScrolledUp = el.scrollTop < el.scrollHeight - el.clientHeight - 100; // 100px threshold
-  
-    setShowScrollButton(isScrolledUp); // Show button if scrolled up
-  
+    const isScrolledUp = el.scrollTop < el.scrollHeight - el.clientHeight - 100;
+    setShowScrollButton(isScrolledUp);
     if (el.scrollTop < 80 && activeSessionId && activeSession?.hasMore && !loadingOlder) {
       loadOlderMessages(activeSessionId);
     }
@@ -463,9 +469,6 @@ const [showScrollButton, setShowScrollButton] = useState(false);
       s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
     ));
 
-    // Scroll to bottom for new message
-    // setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-
     try {
       abortControllerRef.current = new AbortController();
 
@@ -542,7 +545,6 @@ const [showScrollButton, setShowScrollButton] = useState(false);
         }
       }
 
-      // Autoname on first message
       const currentSession = sessions.find(s => s.id === currentSessionId);
       if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
         fetch("/api/sessions/autonaming", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: content || "Image attached" }) })
@@ -573,7 +575,7 @@ const [showScrollButton, setShowScrollButton] = useState(false);
       setStreamingMsgId(null);
     } finally {
       setIsTyping(false);
-      setTimeout(() => inputRef.current?.focus(), 0); // <-- This is the key fix
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   }
 
@@ -627,7 +629,8 @@ const [showScrollButton, setShowScrollButton] = useState(false);
           </div>
 
           <div style={{ padding: "12px 10px 6px" }}>
-            <button className="cg-new" onClick={handleCreateSession} style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #333", background: "transparent", color: "#94a3b8", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif" }}>
+            <button className="cg-new" onClick={handleCreateSession}
+              style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px dashed #333", background: "transparent", color: "#94a3b8", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", transition: "all 0.15s ease", fontFamily: "'Inter', sans-serif" }}>
               <span>+</span> New Chat
             </button>
           </div>
@@ -647,7 +650,8 @@ const [showScrollButton, setShowScrollButton] = useState(false);
                   return (
                     <div key={session.id}>
                       {showChatsLabel && sessions.some(s => s.pinned) && <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>}
-                      <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`} onClick={() => setActiveSessionId(session.id)}
+                      <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`}
+                        onClick={() => setActiveSessionId(session.id)}
                         style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "pointer", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", background: "#242424" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#00ff9d" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
@@ -701,7 +705,8 @@ const [showScrollButton, setShowScrollButton] = useState(false);
 
             {activeSession && (
               <div style={{ position: "relative" }}>
-                <button onClick={() => setShowModelPicker(p => !p)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#333", border: "1px solid #444", color: activeModel?.color ?? "#94a3b8", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
+                <button onClick={() => setShowModelPicker(p => !p)}
+                  style={{ display: "flex", alignItems: "center", gap: "7px", padding: "7px 12px", borderRadius: "8px", background: "#333", border: "1px solid #444", color: activeModel?.color ?? "#94a3b8", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s ease" }}>
                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: activeModel?.color ?? "#94a3b8", flexShrink: 0, boxShadow: `0 0 6px ${activeModel?.color ?? "#94a3b8"}` }} />
                   {activeModel?.label ?? "Select Model"}
                   <span style={{ opacity: 0.5, fontSize: "9px" }}>▼</span>
@@ -724,12 +729,9 @@ const [showScrollButton, setShowScrollButton] = useState(false);
           </div>
 
           {/* Messages */}
-          <div
-            ref={messagesContainerRef}
-            onScroll={handleMessagesScroll}
+          <div ref={messagesContainerRef} onScroll={handleMessagesScroll}
             style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
-            onClick={() => showModelPicker && setShowModelPicker(false)}
-          >
+            onClick={() => showModelPicker && setShowModelPicker(false)}>
             {!activeSession ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: "13px" }}>Create or select a session to start</div>
             ) : loadingMessages ? (
@@ -747,7 +749,6 @@ const [showScrollButton, setShowScrollButton] = useState(false);
               </div>
             ) : (
               <>
-                {/* Load older messages indicator */}
                 {activeSession.hasMore && (
                   <div style={{ display: "flex", justifyContent: "center", padding: "8px", flexShrink: 0 }}>
                     {loadingOlder ? (
@@ -763,13 +764,9 @@ const [showScrollButton, setShowScrollButton] = useState(false);
                     )}
                   </div>
                 )}
-
                 <div ref={messagesTopRef} />
-
                 {activeMessages.map(msg => (
-                  <div key={msg.id}>
-                    <MessageBubble msg={msg} />
-                  </div>
+                  <div key={msg.id}><MessageBubble msg={msg} /></div>
                 ))}
                 {isTyping && !streamingMsgId && activeModel && (
                   <TypingDots modelLabel={activeModel.label} modelColor={activeModel.color} />
@@ -779,31 +776,8 @@ const [showScrollButton, setShowScrollButton] = useState(false);
             <div ref={messagesEndRef} />
             {showScrollButton && (
               <button
-                onClick={() => {
-                  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                  setShowScrollButton(false); // Hide button after clicking
-                  inputRef.current?.focus(); // Focus input after scrolling
-                }}
-                style={{
-                  position: "fixed",
-                  bottom: "100px",
-                  right: "30px",
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  background: "#00ff9d",
-                  border: "none",
-                  color: "#080c14",
-                  fontSize: "16px",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 12px #00000044",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 100,
-                  transition: "all 0.2s ease",
-                }}
-              >
+                onClick={() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); setShowScrollButton(false); inputRef.current?.focus(); }}
+                style={{ position: "fixed", bottom: "100px", right: "30px", width: "40px", height: "40px", borderRadius: "50%", background: "#00ff9d", border: "none", color: "#080c14", fontSize: "16px", cursor: "pointer", boxShadow: "0 4px 12px #00000044", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, transition: "all 0.2s ease" }}>
                 ↓
               </button>
             )}
@@ -822,22 +796,19 @@ const [showScrollButton, setShowScrollButton] = useState(false);
             {selectedImagePreview && (
               <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
                 <img src={selectedImagePreview} alt="preview" style={{ height: "60px", borderRadius: "8px", border: "1px solid #00ff9d44", display: "block" }} />
-                <button onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }} style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", borderRadius: "50%", background: "#ef4444", border: "none", color: "white", fontSize: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                <button onClick={() => { setSelectedImage(null); setSelectedImagePreview(null); }}
+                  style={{ position: "absolute", top: "-6px", right: "-6px", width: "18px", height: "18px", borderRadius: "50%", background: "#ef4444", border: "none", color: "white", fontSize: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
                 <div style={{ marginTop: "4px", fontSize: "9px", color: "#00ff9d", fontFamily: "'JetBrains Mono', monospace" }}>👁 will use Llama-4-Maverick</div>
               </div>
             )}
 
             <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#2a2a2a", border: `1px solid ${isTyping ? "#ef444433" : "#333"}`, borderRadius: "12px", padding: "8px 8px 8px 14px", transition: "border-color 0.3s ease" }}>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
-
               <button className="cg-attach" onClick={() => fileInputRef.current?.click()} disabled={!activeSession}
                 style={{ width: "30px", height: "30px", borderRadius: "7px", flexShrink: 0, background: selectedImage ? "#00ff9d18" : "transparent", border: `1px solid ${selectedImage ? "#00ff9d44" : "#333"}`, color: selectedImage ? "#00ff9d" : "#94a3b8", cursor: activeSession ? "pointer" : "default", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", marginBottom: "2px" }}>
                 📎
               </button>
-
-              <textarea
-                ref={inputRef}
-                disabled={!activeSession || isTyping}
+              <textarea ref={inputRef} disabled={!activeSession || isTyping}
                 onChange={e => setInputHasText(e.target.value.trim().length > 0)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 onInput={(e: any) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
@@ -845,7 +816,6 @@ const [showScrollButton, setShowScrollButton] = useState(false);
                 rows={1}
                 style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "13.5px", resize: "none", fontFamily: "'Inter', sans-serif", lineHeight: "1.6", maxHeight: "120px", caretColor: "#00ff9d", outline: "none", overflowY: "auto" }}
               />
-
               {isTyping ? (
                 <button className="cg-stop" onClick={handleStop}
                   style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: "#ef444418", border: "1px solid #ef444444", color: "#ef4444", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s ease", animation: "cgStopPulse 2s ease infinite" }}>
