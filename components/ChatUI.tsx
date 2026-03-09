@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import TabBar, { Tab } from "./TabBar";
 
 const MODELS = [
   { id: "mistral-large-2512", label: "Mistral Large", color: "#ff7043" },
@@ -17,6 +18,8 @@ const MODELS = [
   { id: "qwen/qwen3-32b", label: "Qwen3 32B", color: "#fbbf24" },
   { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", color: "#34d399" },
 ];
+
+const MAX_TABS = 8;
 
 type Message = {
   id: string;
@@ -91,10 +94,7 @@ function CopyButton({ code }: { code: string }) {
 }
 
 function StreamingMessage({ content, model, generatedImages, isStreaming }: {
-  content: string;
-  model: string;
-  generatedImages?: string[];
-  isStreaming?: boolean;
+  content: string; model: string; generatedImages?: string[]; isStreaming?: boolean;
 }) {
   const modelInfo = MODELS.find(m => m.id === model);
   const [visibleSentences, setVisibleSentences] = useState<string[]>([]);
@@ -235,6 +235,7 @@ function TypingDots({ modelLabel, modelColor }: { modelLabel: string; modelColor
 export default function CodingGuru() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>([]);
   const [inputHasText, setInputHasText] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -247,7 +248,10 @@ export default function CodingGuru() {
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [sidebarDragOver, setSidebarDragOver] = useState(false);
+  const [isDraggingSession, setIsDraggingSession] = useState(false);
 
+  const draggingSessionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesTopRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -258,6 +262,7 @@ export default function CodingGuru() {
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const activeMessages = activeSession?.messages ?? [];
   const activeModel = MODELS.find(m => m.id === activeSession?.model);
+  const streamingSessionId = streamingMsgId ? activeSessionId : null;
 
   useEffect(() => { fetchSessions(); }, []);
 
@@ -284,6 +289,20 @@ export default function CodingGuru() {
     loadMessages(activeSessionId);
   }, [activeSessionId]);
 
+  // Keep tab labels in sync with session names (e.g. after autonaming)
+  useEffect(() => {
+    setTabs(prev => prev.map(tab => {
+      const session = sessions.find(s => s.id === tab.sessionId);
+      if (!session) return tab;
+      return {
+        ...tab,
+        label: session.name,
+        model: session.model,
+        modelColor: MODELS.find(m => m.id === session.model)?.color ?? "#00ff9d",
+      };
+    }));
+  }, [sessions]);
+
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       if (!activeSession) return;
@@ -309,56 +328,144 @@ export default function CodingGuru() {
 
   useEffect(() => {
     const handleBeforeUnload = () => {
-      console.log("All sessions:", sessions.map(s => ({
-        id: s.id,
-        name: s.name,
-        messagesLoaded: s.messagesLoaded,
-        messagesLength: s.messages.length,
-        totalMessages: s.totalMessages
-      })));
-  
-      const emptySessions = sessions.filter(s => 
-        s.messagesLoaded === true && 
-        s.messages.length === 0
-      );
-      
-      console.log("Empty sessions to delete:", emptySessions);
-      
+      const emptySessions = sessions.filter(s => s.messagesLoaded === true && s.messages.length === 0);
       if (emptySessions.length === 0) return;
       emptySessions.forEach(s => {
-        const blob = new Blob([JSON.stringify({ sessionId: s.id })], { 
-          type: "application/json" 
-        });
+        const blob = new Blob([JSON.stringify({ sessionId: s.id })], { type: "application/json" });
         navigator.sendBeacon("/api/sessions/cleanup", blob);
       });
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [sessions]);
-  
+
+  // ─── KEYBOARD SHORTCUTS ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const ctrl = isMac ? e.metaKey : e.ctrlKey;
+      if (!ctrl) return;
+
+      // Ctrl+W — close active tab
+      if (e.key === "w" && tabs.length > 0 && activeSessionId) {
+        e.preventDefault();
+        closeTab(activeSessionId);
+        return;
+      }
+
+      // Ctrl+Tab — next tab, Ctrl+Shift+Tab — previous tab
+      if (e.key === "Tab" && tabs.length > 1) {
+        e.preventDefault();
+        const currentIndex = tabs.findIndex(t => t.sessionId === activeSessionId);
+        if (e.shiftKey) {
+          // Go left
+          const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+          setActiveSessionId(tabs[prevIndex].sessionId);
+        } else {
+          // Go right
+          const nextIndex = (currentIndex + 1) % tabs.length;
+          setActiveSessionId(tabs[nextIndex].sessionId);
+        }
+        return;
+      }
+
+      // Ctrl+1 through Ctrl+8 — jump to tab by number
+      const num = parseInt(e.key);
+      if (!isNaN(num) && num >= 1 && num <= 8 && tabs[num - 1]) {
+        e.preventDefault();
+        setActiveSessionId(tabs[num - 1].sessionId);
+        return;
+      }
+
+      // Ctrl+T — new chat
+      if (e.key === "t") {
+        e.preventDefault();
+        handleCreateSession();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tabs, activeSessionId, sessions]);
+
+  // ─── TAB DRAG & DROP ─────────────────────────────────────────────────────────
+
+  function handleSidebarDragStart(e: React.DragEvent, sessionId: string) {
+    setIsDraggingSession(true);
+    draggingSessionIdRef.current = sessionId;
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData("text/plain", sessionId);
+  }
+
+  function handleTabBarDropZoneDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setSidebarDragOver(true);
+  }
+
+  function handleTabBarDropZoneDragLeave(e: React.DragEvent) {
+    // Only hide if leaving the drop zone entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setSidebarDragOver(false);
+    }
+  }
+
+  function handleTabBarDropZoneDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setSidebarDragOver(false);
+    setIsDraggingSession(false);
+    const sessionId = draggingSessionIdRef.current ?? e.dataTransfer.getData("text/plain");
+    if (!sessionId) return;
+    openAsTab(sessionId);
+    draggingSessionIdRef.current = null;
+  }
+
+  function openAsTab(sessionId: string) {
+    if (tabs.find(t => t.sessionId === sessionId)) {
+      setActiveSessionId(sessionId);
+      return;
+    }
+    if (tabs.length >= MAX_TABS) {
+      setError(`Max ${MAX_TABS} tabs open at once`);
+      return;
+    }
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+    const newTab: Tab = {
+      sessionId,
+      label: session.name,
+      model: session.model,
+      modelColor: MODELS.find(m => m.id === session.model)?.color ?? "#00ff9d",
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveSessionId(sessionId);
+  }
+
+  function closeTab(sessionId: string) {
+    setTabs(prev => {
+      const updated = prev.filter(t => t.sessionId !== sessionId);
+      if (activeSessionId === sessionId) {
+        const fallback = updated[updated.length - 1];
+        setActiveSessionId(fallback?.sessionId ?? sessions.find(s => s.id !== sessionId)?.id ?? null);
+      }
+      return updated;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   async function fetchSessions() {
     try {
       setLoading(true);
-  
-      // Create new session first, before loading existing ones
       const newRes = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "New Chat", model: localStorage.getItem('cg-default-model') ?? 'mistral-large-2512' })
       });
       const newSession = await newRes.json();
-  
-      // Then load existing sessions
       const res = await fetch("/api/sessions");
       const data = await res.json();
-      const allSessions = data.map((s: any) => ({
-        ...s,
-        messages: [],
-        messagesLoaded: s.id === newSession.id ? true : false,
-        hasMore: false
-      }));
-  
-      setSessions(allSessions);
+      setSessions(data.map((s: any) => ({ ...s, messages: [], messagesLoaded: s.id === newSession.id ? true : false, hasMore: false })));
       setActiveSessionId(newSession.id);
     } catch { setError("Failed to load sessions"); }
     finally { setLoading(false); }
@@ -391,10 +498,7 @@ export default function CodingGuru() {
         s.id === sessionId ? { ...s, messages: [...data.messages, ...s.messages], hasMore: data.hasMore } : s
       ));
       requestAnimationFrame(() => {
-        if (container) {
-          const scrollHeightAfter = container.scrollHeight;
-          container.scrollTop = scrollHeightAfter - scrollHeightBefore;
-        }
+        if (container) container.scrollTop = container.scrollHeight - scrollHeightBefore;
       });
     } catch { setError("Failed to load older messages"); }
     finally { setLoadingOlder(false); }
@@ -402,8 +506,7 @@ export default function CodingGuru() {
 
   function handleMessagesScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
-    const isScrolledUp = el.scrollTop < el.scrollHeight - el.clientHeight - 100;
-    setShowScrollButton(isScrolledUp);
+    setShowScrollButton(el.scrollTop < el.scrollHeight - el.clientHeight - 100);
     if (el.scrollTop < 80 && activeSessionId && activeSession?.hasMore && !loadingOlder) {
       loadOlderMessages(activeSessionId);
     }
@@ -414,19 +517,11 @@ export default function CodingGuru() {
     const savedModel = localStorage.getItem('cg-default-model') ?? 'mistral-large-2512';
     try {
       const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "New Chat", model: savedModel })
       });
       const session = await res.json();
-      setSessions(prev => [{
-        ...session,
-        messages: [],
-        pinned: false,
-        messagesLoaded: true,
-        hasMore: false,
-        isEmpty: true
-      }, ...prev]);
+      setSessions(prev => [{ ...session, messages: [], pinned: false, messagesLoaded: true, hasMore: false, isEmpty: true }, ...prev]);
       setActiveSessionId(session.id);
     } catch { setError("Failed to create session"); }
   }
@@ -434,17 +529,11 @@ export default function CodingGuru() {
   async function handleDeleteSession(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation();
     try {
-      await fetch("/api/sessions", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId })
-      });
+      await fetch("/api/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
+      setTabs(prev => prev.filter(t => t.sessionId !== sessionId));
       setSessions(prev => {
         const updated = prev.filter(s => s.id !== sessionId);
-        if (activeSessionId === sessionId) {
-          const nextSession = updated.find(s => !s.isEmpty) ?? updated[0];
-          setActiveSessionId(nextSession?.id ?? null);
-        }
+        if (activeSessionId === sessionId) setActiveSessionId(updated[0]?.id ?? null);
         return updated;
       });
     } catch { setError("Failed to delete session"); }
@@ -456,11 +545,7 @@ export default function CodingGuru() {
     if (!session) return;
     const newPinned = !session.pinned;
     try {
-      await fetch("/api/sessions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, pinned: newPinned })
-      });
+      await fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, pinned: newPinned }) });
       setSessions(prev => {
         const updated = prev.map(s => s.id === sessionId ? { ...s, pinned: newPinned } : s);
         return [...updated.filter(s => s.pinned), ...updated.filter(s => !s.pinned)];
@@ -486,8 +571,7 @@ export default function CodingGuru() {
     if (streamingMsgId) {
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId ? {
-          ...s,
-          messages: s.messages.map(m =>
+          ...s, messages: s.messages.map(m =>
             m.id === streamingMsgId ? { ...m, isStreaming: false, content: m.content || '_(stopped)_' } : m
           )
         } : s
@@ -501,10 +585,7 @@ export default function CodingGuru() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
 
-    if (inputRef.current) {
-      inputRef.current.value = "";
-      inputRef.current.style.height = "auto";
-    }
+    if (inputRef.current) { inputRef.current.value = ""; inputRef.current.style.height = "auto"; }
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
@@ -516,13 +597,10 @@ export default function CodingGuru() {
     setSelectedImagePreview(null);
 
     const currentSessionId = activeSessionId;
-
     const tempUserMsg: Message = {
-      id: `temp-user-${Date.now()}`,
-      role: "user",
+      id: `temp-user-${Date.now()}`, role: "user",
       content: imageToSend ? `📎 [Image attached]\n${content}` : content,
-      model: activeSession!.model,
-      createdAt: new Date().toISOString(),
+      model: activeSession!.model, createdAt: new Date().toISOString(),
       imagePreview: previewToSend ?? undefined,
     };
 
@@ -532,33 +610,20 @@ export default function CodingGuru() {
 
     const streamingId = `streaming-${Date.now()}`;
     setStreamingMsgId(streamingId);
-
     const streamingMsg: Message = {
-      id: streamingId,
-      role: "assistant",
-      content: "",
-      model: activeSession!.model,
-      createdAt: new Date().toISOString(),
-      isStreaming: true,
+      id: streamingId, role: "assistant", content: "",
+      model: activeSession!.model, createdAt: new Date().toISOString(), isStreaming: true,
     };
-
     setSessions(prev => prev.map(s =>
       s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
     ));
 
     try {
       abortControllerRef.current = new AbortController();
-
       const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         signal: abortControllerRef.current.signal,
-        body: JSON.stringify({
-          sessionId: currentSessionId,
-          content: content || "What do you see in this image?",
-          imageBase64: imageToSend,
-          imageMimeType: mimeToSend,
-        })
+        body: JSON.stringify({ sessionId: currentSessionId, content: content || "What do you see in this image?", imageBase64: imageToSend, imageMimeType: mimeToSend })
       });
 
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
@@ -573,7 +638,6 @@ export default function CodingGuru() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -582,83 +646,42 @@ export default function CodingGuru() {
           if (!line.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(line.slice(6));
-
             if (event.type === 'chunk') {
               accumulatedContent += event.content;
-              setSessions(prev => {
-                const newSessions = prev.map(s =>
-                  s.id === currentSessionId ? {
-                    ...s,
-                    messages: s.messages.map(m =>
-                      m.id === streamingId ? { ...m, content: accumulatedContent } : m
-                    )
-                  } : s
-                );
-                return newSessions;
-              });
+              setSessions(prev => prev.map(s =>
+                s.id === currentSessionId ? { ...s, messages: s.messages.map(m => m.id === streamingId ? { ...m, content: accumulatedContent } : m) } : s
+              ));
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }
-
-            if (event.type === 'images') {
-              finalImages = event.images;
-            }
-
+            if (event.type === 'images') { finalImages = event.images; }
             if (event.type === 'done') {
               setSessions(prev => prev.map(s =>
                 s.id === currentSessionId ? {
-                  ...s,
-                  messages: s.messages.map(m =>
-                    m.id === streamingId ? {
-                      ...m,
-                      id: event.messageId,
-                      content: accumulatedContent,
-                      model: event.model,
-                      isStreaming: false,
-                      generatedImages: finalImages ?? undefined,
-                    } : m
+                  ...s, messages: s.messages.map(m =>
+                    m.id === streamingId ? { ...m, id: event.messageId, content: accumulatedContent, model: event.model, isStreaming: false, generatedImages: finalImages ?? undefined } : m
                   )
                 } : s
               ));
               setStreamingMsgId(null);
             }
-
             if (event.type === 'error') throw new Error(event.error);
-          } catch (parseErr) {
-            console.error("Failed to parse event:", parseErr);
-          }
+          } catch { /* skip malformed */ }
         }
       }
 
       const currentSession = sessions.find(s => s.id === currentSessionId);
       if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
-        fetch("/api/sessions/autonaming", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: content || "Image attached" })
-        })
-          .then(res => res.json())
+        fetch("/api/sessions/autonaming", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: content || "Image attached" }) })
+          .then(r => r.json())
           .then(({ name }) => {
-            fetch("/api/sessions", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId: currentSessionId, name })
-            })
-              .then(() => {
-                setSessions(prev => prev.map(s =>
-                  s.id === currentSessionId ? { ...s, name } : s
-                ));
-              });
-          })
-          .catch(() => {});
+            fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: currentSessionId, name }) })
+              .then(() => setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, name } : s)));
+          }).catch(() => {});
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
         setSessions(prev => prev.map(s =>
-          s.id === currentSessionId ? {
-            ...s,
-            messages: s.messages.map(m =>
-              m.id === streamingId ? { ...m, isStreaming: false, content: m.content || '_(stopped)_' } : m
-            )
-          } : s
+          s.id === currentSessionId ? { ...s, messages: s.messages.map(m => m.id === streamingId ? { ...m, isStreaming: false, content: m.content || '_(stopped)_' } : m) } : s
         ));
         setStreamingMsgId(null);
         return;
@@ -679,11 +702,7 @@ export default function CodingGuru() {
     setShowModelPicker(false);
     localStorage.setItem('cg-default-model', modelId);
     try {
-      await fetch("/api/chat", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId, model: modelId })
-      });
+      await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: activeSessionId, model: modelId }) });
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, model: modelId } : s));
     } catch { setError("Failed to switch model"); }
   }
@@ -703,9 +722,11 @@ export default function CodingGuru() {
         @keyframes cgSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .cg-session:hover .cg-del { opacity: 1 !important; }
         .cg-session:hover .cg-pin { opacity: 1 !important; }
+        .cg-session:hover .cg-drag-hint { opacity: 1 !important; }
         .cg-session:hover { background: #2f2f2f !important; }
         .cg-session.active { background: #1a2e22 !important; border-color: #00ff9d44 !important; border-left: 2px solid #00ff9d !important; }
         .cg-session.pinned { border-left: 2px solid #fbbf24 !important; border-color: #fbbf2433 !important; }
+        .cg-session.as-tab { border-left: 2px solid #6366f1 !important; }
         .cg-model-opt:hover { background: #333 !important; }
         .cg-send:hover:not(:disabled) { background: #00e88d !important; }
         .cg-stop:hover { background: #ef444430 !important; border-color: #ef4444 !important; }
@@ -716,6 +737,7 @@ export default function CodingGuru() {
       `}</style>
 
       <div style={{ display: "flex", height: "100vh", width: "100%", background: "#212121", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
+
         {/* SIDEBAR */}
         <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#2a2a2a", borderRight: "1px solid #333", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "10px" }}>
@@ -733,6 +755,11 @@ export default function CodingGuru() {
             </button>
           </div>
 
+          {/* Drag hint */}
+          <div style={{ padding: "2px 12px 4px", fontSize: "9px", color: "#6366f155", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: "4px" }}>
+            <span>⊞</span> drag a chat up to open as tab
+          </div>
+
           <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
             {loading ? (
               <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "12px" }}>Loading...</div>
@@ -743,17 +770,25 @@ export default function CodingGuru() {
                 {sessions.some(s => s.pinned) && <div style={{ padding: "4px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>PINNED</div>}
                 {sessions.map((session, index) => {
                   const isActive = session.id === activeSessionId;
+                  const isTab = tabs.some(t => t.sessionId === session.id);
                   const prevSession = sessions[index - 1];
                   const showChatsLabel = !session.pinned && prevSession?.pinned;
                   return (
                     <div key={session.id}>
-                      {showChatsLabel && sessions.some(s => s.pinned) && <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>}
-                      <div className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""}`}
+                      {showChatsLabel && sessions.some(s => s.pinned) && (
+                        <div style={{ padding: "8px 10px 2px", fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>CHATS</div>
+                      )}
+                      <div
+                        className={`cg-session ${isActive ? "active" : ""} ${session.pinned ? "pinned" : ""} ${isTab ? "as-tab" : ""}`}
+                        draggable
+                        onDragStart={e => handleSidebarDragStart(e, session.id)}
+                        onDragEnd={() => { setIsDraggingSession(false); setSidebarDragOver(false); draggingSessionIdRef.current = null; }}
                         onClick={() => setActiveSessionId(session.id)}
-                        style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "pointer", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", background: "#242424" }}>
+                        style={{ padding: "9px 10px 9px 12px", borderRadius: "8px", border: "1px solid #2a2a2a", borderLeft: "2px solid #333", cursor: "grab", marginBottom: "3px", transition: "all 0.15s ease", position: "relative", background: "#242424" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#00ff9d" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "120px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: isActive ? "#00ff9d" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "110px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {session.pinned && <span style={{ fontSize: "10px", flexShrink: 0 }}>📌</span>}
+                            {isTab && <span style={{ fontSize: "9px", color: "#6366f1", flexShrink: 0 }} title="Open as tab">⊞</span>}
                             {session.name}
                           </span>
                           <div style={{ display: "flex", gap: "2px", alignItems: "center" }}>
@@ -776,24 +811,81 @@ export default function CodingGuru() {
             )}
           </div>
 
-          <div style={{ padding: "10px 14px", borderTop: "1px solid #333", display: "flex", alignItems: "center", gap: "6px" }}>
-            <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: "cgPulse 2s infinite", boxShadow: "0 0 5px #00ff9d", flexShrink: 0 }} />
-            <span style={{ fontSize: "9px", color: "#1e3a2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>GROQCLOUD · MISTRAL CONNECTED</span>
+          <div style={{ padding: "10px 14px", borderTop: "1px solid #333", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#00ff9d", animation: "cgPulse 2s infinite", boxShadow: "0 0 5px #00ff9d", flexShrink: 0 }} />
+              <span style={{ fontSize: "9px", color: "#1e3a2e", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "1px" }}>GROQCLOUD · MISTRAL CONNECTED</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {[
+                { key: "Ctrl+Q", desc: "New chat" },
+                { key: "Ctrl+W", desc: "Close tab" },
+                { key: "Ctrl+Tab", desc: "Next tab" },
+                { key: "Ctrl+1-8", desc: "Jump to tab" },
+              ].map(s => (
+                <span key={s.key} title={s.desc} style={{ fontSize: "9px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace", background: "#333", padding: "2px 5px", borderRadius: "4px", cursor: "default" }}>{s.key}</span>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* MAIN AREA */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", minWidth: 0 }}>
-          {/* Header */}
+
+          {/* TAB BAR DROP ZONE */}
+          <div
+            onDragOver={handleTabBarDropZoneDragOver}
+            onDragLeave={handleTabBarDropZoneDragLeave}
+            onDrop={handleTabBarDropZoneDrop}
+            style={{ flexShrink: 0 }}
+          >
+            {tabs.length > 0 ? (
+              <TabBar
+                tabs={tabs}
+                activeTabSessionId={activeSessionId}
+                onTabClick={id => setActiveSessionId(id)}
+                onTabClose={closeTab}
+                onTabReorder={setTabs}
+                isTyping={isTyping}
+                streamingSessionId={streamingSessionId}
+              />
+            ) : null}
+
+            {/* Always-visible drop zone during drag, even when tabs exist */}
+            {isDraggingSession && (
+              <div style={{
+                height: "48px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                gap: "8px",
+                background: sidebarDragOver ? "#6366f122" : "#1a1a1a",
+                border: `2px dashed ${sidebarDragOver ? "#6366f1" : "#6366f144"}`,
+                borderRadius: "8px",
+                margin: tabs.length > 0 ? "4px 12px" : "4px 12px",
+                transition: "all 0.15s ease",
+                fontSize: "11px",
+                color: sidebarDragOver ? "#6366f1" : "#6366f166",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontWeight: sidebarDragOver ? 600 : 400,
+                letterSpacing: "0.5px",
+              }}>
+                <span style={{ fontSize: "16px" }}>⊞</span>
+                {sidebarDragOver ? "Release to open as tab!" : "Drop here to open as tab"}
+              </div>
+            )}
+          </div>
+
+          {/* HEADER */}
           <div style={{ padding: "12px 18px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#212121" }}>
             {activeSession ? (
               <div>
                 <div style={{ fontSize: "14px", fontWeight: 600, color: "#e2e8f0", display: "flex", alignItems: "center", gap: "6px" }}>
                   {activeSession.pinned && <span style={{ fontSize: "12px" }}>📌</span>}
+                  {tabs.some(t => t.sessionId === activeSessionId) && <span style={{ fontSize: "10px", color: "#6366f1" }}>⊞</span>}
                   {activeSession.name}
                 </div>
                 <div style={{ fontSize: "10px", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
                   {activeSession.totalMessages ?? activeMessages.length} messages · 👁 vision via Llama-4-Maverick
+                  {tabs.length > 0 && <span style={{ marginLeft: "8px", color: "#6366f155" }}>· {tabs.length} tab{tabs.length > 1 ? "s" : ""} open</span>}
                 </div>
               </div>
             ) : (
@@ -825,7 +917,7 @@ export default function CodingGuru() {
             )}
           </div>
 
-          {/* Messages */}
+          {/* MESSAGES */}
           <div ref={messagesContainerRef} onScroll={handleMessagesScroll}
             style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column" }}
             onClick={() => showModelPicker && setShowModelPicker(false)}>
@@ -862,9 +954,7 @@ export default function CodingGuru() {
                   </div>
                 )}
                 <div ref={messagesTopRef} />
-                {activeMessages.map(msg => (
-                  <div key={msg.id}><MessageBubble msg={msg} /></div>
-                ))}
+                {activeMessages.map(msg => <div key={msg.id}><MessageBubble msg={msg} /></div>)}
                 {isTyping && !streamingMsgId && activeModel && (
                   <TypingDots modelLabel={activeModel.label} modelColor={activeModel.color} />
                 )}
@@ -880,7 +970,7 @@ export default function CodingGuru() {
             )}
           </div>
 
-          {/* Error */}
+          {/* ERROR */}
           {error && (
             <div style={{ margin: "0 16px 8px", padding: "8px 12px", background: "#ff000010", border: "1px solid #ff000030", borderRadius: "8px", color: "#ef4444", fontSize: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               {error}
@@ -888,7 +978,7 @@ export default function CodingGuru() {
             </div>
           )}
 
-          {/* Input */}
+          {/* INPUT */}
           <div style={{ padding: "10px 14px 14px", flexShrink: 0, background: "#212121", borderTop: "1px solid #333" }}>
             {selectedImagePreview && (
               <div style={{ marginBottom: "10px", position: "relative", display: "inline-block" }}>
@@ -898,7 +988,6 @@ export default function CodingGuru() {
                 <div style={{ marginTop: "4px", fontSize: "9px", color: "#00ff9d", fontFamily: "'JetBrains Mono', monospace" }}>👁 will use Llama-4-Maverick</div>
               </div>
             )}
-
             <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", background: "#2a2a2a", border: `1px solid ${isTyping ? "#ef444433" : "#333"}`, borderRadius: "12px", padding: "8px 8px 8px 14px", transition: "border-color 0.3s ease" }}>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
               <button className="cg-attach" onClick={() => fileInputRef.current?.click()} disabled={!activeSession}
@@ -919,8 +1008,7 @@ export default function CodingGuru() {
                   ■
                 </button>
               ) : (
-                <button className="cg-send" onClick={handleSend}
-                  disabled={(!inputHasText && !selectedImage) || !activeSession}
+                <button className="cg-send" onClick={handleSend} disabled={(!inputHasText && !selectedImage) || !activeSession}
                   style={{ width: "34px", height: "34px", borderRadius: "8px", flexShrink: 0, background: (inputHasText || selectedImage) && activeSession ? "#00ff9d" : "#333", border: "none", cursor: (inputHasText || selectedImage) && activeSession ? "pointer" : "default", color: (inputHasText || selectedImage) ? "#080c14" : "#94a3b8", fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease", boxShadow: (inputHasText || selectedImage) && activeSession ? "0 0 14px #00ff9d33" : "none" }}>↑</button>
               )}
             </div>
