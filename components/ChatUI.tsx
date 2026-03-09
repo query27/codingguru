@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -39,6 +39,7 @@ type Session = {
   hasMore?: boolean;
   totalMessages?: number;
   messagesLoaded?: boolean;
+  isEmpty?: boolean;
 };
 
 function splitIntoSentences(text: string): string[] {
@@ -49,7 +50,6 @@ function splitIntoSentences(text: string): string[] {
   const lines = text.split('\n');
 
   for (const line of lines) {
-    // Code block toggle
     if (line.startsWith('```')) {
       inCodeBlock = !inCodeBlock;
       current += line + '\n';
@@ -58,14 +58,12 @@ function splitIntoSentences(text: string): string[] {
     }
     if (inCodeBlock) { current += line + '\n'; continue; }
 
-    // Table rows — keep grouped, never split mid-table
     if (line.startsWith('|')) {
       inTable = true;
       current += line + '\n';
       continue;
     }
 
-    // Flush table when we hit a non-pipe line
     if (inTable) {
       inTable = false;
       if (current.trim()) { parts.push(current.trim()); current = ''; }
@@ -309,13 +307,59 @@ export default function CodingGuru() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [activeSession]);
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log("All sessions:", sessions.map(s => ({
+        id: s.id,
+        name: s.name,
+        messagesLoaded: s.messagesLoaded,
+        messagesLength: s.messages.length,
+        totalMessages: s.totalMessages
+      })));
+  
+      const emptySessions = sessions.filter(s => 
+        s.messagesLoaded === true && 
+        s.messages.length === 0
+      );
+      
+      console.log("Empty sessions to delete:", emptySessions);
+      
+      if (emptySessions.length === 0) return;
+      emptySessions.forEach(s => {
+        const blob = new Blob([JSON.stringify({ sessionId: s.id })], { 
+          type: "application/json" 
+        });
+        navigator.sendBeacon("/api/sessions/cleanup", blob);
+      });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [sessions]);
+  
   async function fetchSessions() {
     try {
       setLoading(true);
+  
+      // Create new session first, before loading existing ones
+      const newRes = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New Chat", model: localStorage.getItem('cg-default-model') ?? 'mistral-large-2512' })
+      });
+      const newSession = await newRes.json();
+  
+      // Then load existing sessions
       const res = await fetch("/api/sessions");
       const data = await res.json();
-      setSessions(data.map((s: any) => ({ ...s, messages: [], messagesLoaded: false, hasMore: false })));
-      if (data.length > 0) setActiveSessionId(data[0].id);
+      const allSessions = data.map((s: any) => ({
+        ...s,
+        messages: [],
+        messagesLoaded: s.id === newSession.id ? true : false,
+        hasMore: false
+      }));
+  
+      setSessions(allSessions);
+      setActiveSessionId(newSession.id);
     } catch { setError("Failed to load sessions"); }
     finally { setLoading(false); }
   }
@@ -366,11 +410,23 @@ export default function CodingGuru() {
   }
 
   async function handleCreateSession() {
+    setSessions(prev => prev.filter(s => !s.isEmpty));
     const savedModel = localStorage.getItem('cg-default-model') ?? 'mistral-large-2512';
     try {
-      const res = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "New Chat", model: savedModel }) });
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New Chat", model: savedModel })
+      });
       const session = await res.json();
-      setSessions(prev => [{ ...session, messages: [], pinned: false, messagesLoaded: true, hasMore: false }, ...prev]);
+      setSessions(prev => [{
+        ...session,
+        messages: [],
+        pinned: false,
+        messagesLoaded: true,
+        hasMore: false,
+        isEmpty: true
+      }, ...prev]);
       setActiveSessionId(session.id);
     } catch { setError("Failed to create session"); }
   }
@@ -378,9 +434,19 @@ export default function CodingGuru() {
   async function handleDeleteSession(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation();
     try {
-      await fetch("/api/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (activeSessionId === sessionId) { const remaining = sessions.filter(s => s.id !== sessionId); setActiveSessionId(remaining[0]?.id ?? null); }
+      await fetch("/api/sessions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId })
+      });
+      setSessions(prev => {
+        const updated = prev.filter(s => s.id !== sessionId);
+        if (activeSessionId === sessionId) {
+          const nextSession = updated.find(s => !s.isEmpty) ?? updated[0];
+          setActiveSessionId(nextSession?.id ?? null);
+        }
+        return updated;
+      });
     } catch { setError("Failed to delete session"); }
   }
 
@@ -390,7 +456,11 @@ export default function CodingGuru() {
     if (!session) return;
     const newPinned = !session.pinned;
     try {
-      await fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, pinned: newPinned }) });
+      await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, pinned: newPinned })
+      });
       setSessions(prev => {
         const updated = prev.map(s => s.id === sessionId ? { ...s, pinned: newPinned } : s);
         return [...updated.filter(s => s.pinned), ...updated.filter(s => !s.pinned)];
@@ -430,7 +500,7 @@ export default function CodingGuru() {
   async function handleSend() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
-  
+
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
@@ -438,16 +508,15 @@ export default function CodingGuru() {
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
-  
+
     const imageToSend = selectedImage;
     const mimeToSend = selectedImageMime;
     const previewToSend = selectedImagePreview;
     setSelectedImage(null);
     setSelectedImagePreview(null);
-  
+
     const currentSessionId = activeSessionId;
-  
-    // Add user message
+
     const tempUserMsg: Message = {
       id: `temp-user-${Date.now()}`,
       role: "user",
@@ -456,15 +525,14 @@ export default function CodingGuru() {
       createdAt: new Date().toISOString(),
       imagePreview: previewToSend ?? undefined,
     };
-  
+
     setSessions(prev => prev.map(s =>
-      s.id === currentSessionId ? { ...s, messages: [...s.messages, tempUserMsg] } : s
+      s.id === currentSessionId ? { ...s, messages: [...s.messages, tempUserMsg], isEmpty: false } : s
     ));
-  
-    // Add empty assistant message for streaming
+
     const streamingId = `streaming-${Date.now()}`;
     setStreamingMsgId(streamingId);
-  
+
     const streamingMsg: Message = {
       id: streamingId,
       role: "assistant",
@@ -473,14 +541,14 @@ export default function CodingGuru() {
       createdAt: new Date().toISOString(),
       isStreaming: true,
     };
-  
+
     setSessions(prev => prev.map(s =>
       s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
     ));
-  
+
     try {
       abortControllerRef.current = new AbortController();
-  
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -492,32 +560,31 @@ export default function CodingGuru() {
           imageMimeType: mimeToSend,
         })
       });
-  
+
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
       if (!res.body) throw new Error("No stream body");
-  
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let accumulatedContent = '';
       let finalImages: string[] | null = null;
-  
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-  
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-  
+
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(line.slice(6));
-  
+
             if (event.type === 'chunk') {
               accumulatedContent += event.content;
-              // Update UI only once per chunk (no loop)
               setSessions(prev => {
                 const newSessions = prev.map(s =>
                   s.id === currentSessionId ? {
@@ -530,11 +597,11 @@ export default function CodingGuru() {
                 return newSessions;
               });
             }
-  
+
             if (event.type === 'images') {
               finalImages = event.images;
             }
-  
+
             if (event.type === 'done') {
               setSessions(prev => prev.map(s =>
                 s.id === currentSessionId ? {
@@ -553,15 +620,14 @@ export default function CodingGuru() {
               ));
               setStreamingMsgId(null);
             }
-  
+
             if (event.type === 'error') throw new Error(event.error);
           } catch (parseErr) {
             console.error("Failed to parse event:", parseErr);
           }
         }
       }
-  
-      // Auto-rename session if it's the first message
+
       const currentSession = sessions.find(s => s.id === currentSessionId);
       if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
         fetch("/api/sessions/autonaming", {
@@ -613,7 +679,11 @@ export default function CodingGuru() {
     setShowModelPicker(false);
     localStorage.setItem('cg-default-model', modelId);
     try {
-      await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: activeSessionId, model: modelId }) });
+      await fetch("/api/chat", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: activeSessionId, model: modelId })
+      });
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, model: modelId } : s));
     } catch { setError("Failed to switch model"); }
   }
@@ -646,7 +716,6 @@ export default function CodingGuru() {
       `}</style>
 
       <div style={{ display: "flex", height: "100vh", width: "100%", background: "#212121", fontFamily: "'Inter', sans-serif", overflow: "hidden" }}>
-
         {/* SIDEBAR */}
         <div style={{ width: "240px", minWidth: "240px", height: "100vh", background: "#2a2a2a", borderRight: "1px solid #333", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "10px" }}>
@@ -715,7 +784,6 @@ export default function CodingGuru() {
 
         {/* MAIN AREA */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", minWidth: 0 }}>
-
           {/* Header */}
           <div style={{ padding: "12px 18px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "#212121" }}>
             {activeSession ? (
