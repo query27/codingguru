@@ -430,20 +430,24 @@ export default function CodingGuru() {
   async function handleSend() {
     const content = inputRef.current?.value.trim() ?? "";
     if (!content && !selectedImage || !activeSessionId || isTyping) return;
-
-    if (inputRef.current) { inputRef.current.value = ""; inputRef.current.style.height = "auto"; }
+  
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.style.height = "auto";
+    }
     setInputHasText(false);
     setIsTyping(true);
     setError(null);
-
+  
     const imageToSend = selectedImage;
     const mimeToSend = selectedImageMime;
     const previewToSend = selectedImagePreview;
     setSelectedImage(null);
     setSelectedImagePreview(null);
-
+  
     const currentSessionId = activeSessionId;
-
+  
+    // Add user message
     const tempUserMsg: Message = {
       id: `temp-user-${Date.now()}`,
       role: "user",
@@ -452,26 +456,31 @@ export default function CodingGuru() {
       createdAt: new Date().toISOString(),
       imagePreview: previewToSend ?? undefined,
     };
-
+  
     setSessions(prev => prev.map(s =>
       s.id === currentSessionId ? { ...s, messages: [...s.messages, tempUserMsg] } : s
     ));
-
+  
+    // Add empty assistant message for streaming
     const streamingId = `streaming-${Date.now()}`;
     setStreamingMsgId(streamingId);
-
+  
     const streamingMsg: Message = {
-      id: streamingId, role: "assistant", content: "",
-      model: activeSession!.model, createdAt: new Date().toISOString(), isStreaming: true,
+      id: streamingId,
+      role: "assistant",
+      content: "",
+      model: activeSession!.model,
+      createdAt: new Date().toISOString(),
+      isStreaming: true,
     };
-
+  
     setSessions(prev => prev.map(s =>
       s.id === currentSessionId ? { ...s, messages: [...s.messages, streamingMsg] } : s
     ));
-
+  
     try {
       abortControllerRef.current = new AbortController();
-
+  
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -483,44 +492,49 @@ export default function CodingGuru() {
           imageMimeType: mimeToSend,
         })
       });
-
+  
       if (!res.ok) throw new Error((await res.json()).error ?? "API error");
       if (!res.body) throw new Error("No stream body");
-
+  
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let accumulatedContent = '';
       let finalImages: string[] | null = null;
-
+  
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
+  
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-
+  
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(line.slice(6));
-
+  
             if (event.type === 'chunk') {
               accumulatedContent += event.content;
-              setSessions(prev => prev.map(s =>
-                s.id === currentSessionId ? {
-                  ...s,
-                  messages: s.messages.map(m =>
-                    m.id === streamingId ? { ...m, content: accumulatedContent } : m
-                  )
-                } : s
-              ));
-              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              // Update UI only once per chunk (no loop)
+              setSessions(prev => {
+                const newSessions = prev.map(s =>
+                  s.id === currentSessionId ? {
+                    ...s,
+                    messages: s.messages.map(m =>
+                      m.id === streamingId ? { ...m, content: accumulatedContent } : m
+                    )
+                  } : s
+                );
+                return newSessions;
+              });
             }
-
-            if (event.type === 'images') { finalImages = event.images; }
-
+  
+            if (event.type === 'images') {
+              finalImages = event.images;
+            }
+  
             if (event.type === 'done') {
               setSessions(prev => prev.map(s =>
                 s.id === currentSessionId ? {
@@ -539,22 +553,37 @@ export default function CodingGuru() {
               ));
               setStreamingMsgId(null);
             }
-
+  
             if (event.type === 'error') throw new Error(event.error);
-          } catch (parseErr) { /* skip malformed lines */ }
+          } catch (parseErr) {
+            console.error("Failed to parse event:", parseErr);
+          }
         }
       }
-
+  
+      // Auto-rename session if it's the first message
       const currentSession = sessions.find(s => s.id === currentSessionId);
       if (currentSession && currentSession.messages.filter(m => m.role === 'user').length === 0) {
-        fetch("/api/sessions/autonaming", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: content || "Image attached" }) })
+        fetch("/api/sessions/autonaming", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: content || "Image attached" })
+        })
           .then(res => res.json())
           .then(({ name }) => {
-            fetch("/api/sessions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: currentSessionId, name }) })
-              .then(() => setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, name } : s)));
-          }).catch(() => {});
+            fetch("/api/sessions", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: currentSessionId, name })
+            })
+              .then(() => {
+                setSessions(prev => prev.map(s =>
+                  s.id === currentSessionId ? { ...s, name } : s
+                ));
+              });
+          })
+          .catch(() => {});
       }
-
     } catch (err: any) {
       if (err.name === 'AbortError') {
         setSessions(prev => prev.map(s =>
